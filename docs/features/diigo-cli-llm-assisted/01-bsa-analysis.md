@@ -7,7 +7,7 @@
   - Primary: Individual knowledge workers who extensively use Diigo for bookmark management (user: oehmsmith)
   - Secondary: Anyone working with large bookmark collections requiring disciplined taxonomy
 - **Success Metric**:
-  - 100% tag reuse from existing personal tag vocabulary
+  - Maximize tag reuse from existing personal tag vocabulary (desired but not always possible - new tags acceptable if no existing tags fit)
   - Zero manual tag entry for URL, title, author, description extraction
   - Sub-30-second workflow from URL to saved bookmark
 
@@ -29,14 +29,21 @@
 - Proposed tags (via LLM using master tag list + cached user tags)
 
 **Data to Store:**
-- Local cache: `~/.diigo_tags` (JSON file containing all user's existing tags with counts and last sync timestamp)
-- Optional config: `~/.diigo-cli.yml` (master tags, aliases, rules)
+- Local cache: `~/.config/diigo/cache/` (tag cache - SQLite database for quick queries and/or VectorDB for similarity/context searches)
+- Config: `~/.config/diigo/config.yml` (master tags, aliases, rules, LLM provider preferences)
+- LLM model registry: `~/.config/diigo/models.json` (provider/model catalog synced from APIs, last updated timestamp)
 
 **Tag Schema:**
-- Content tags: from master list (e.g., `ai-agent`, `git-workflow`, `conventional-commits`)
+- Content tags: from master list (e.g., `ai-agent`, `git-workflow`, `conventional_commits`)
 - System tags: `source:<domain>` (always added if URL present)
 - System tags: `author:<slug>` (always added if author detected, slugified as `author:firstname-lastname`)
-- All tags: lowercase, hyphenated, no spaces, special chars stripped except `:`
+- Metadata tag: `created-by-diigo-tagger-ai` (always added to all bookmarks created with this tool)
+- **Tag Format Rules**:
+  - **No spaces allowed** in tags
+  - **Hyphens (`-`)**: Join compound words (e.g., `ai-agent`, `git-workflow`)
+  - **Underscores (`_`)**: Replace spaces in multi-word phrases (e.g., `commit_narrative`, `knowledge_management`)
+  - **Both can be combined**: `ai-enhanced_devops` (compound words hyphenated, space-words underscored)
+  - All tags: lowercase, special chars stripped except `:`, `-`, `_`
 
 ### API Requirements
 
@@ -64,15 +71,26 @@
    - Response: JSON array of bookmark objects
    - Pagination: iterate with `start` += `count` until empty batch
 
-**OpenAI API Integration (via LangChain):**
+**LLM API Integration (via LangChain - Provider Agnostic):**
 
-3. **ChatCompletion** (LLM-assisted tag generation)
-   - Model: `gpt-4o-mini` (cost-effective, sufficient for extraction)
-   - Temperature: 0.2 (deterministic)
-   - System prompt: Enforce tagging rules (reuse master tags, add source:/author:, lowercase, hyphenated)
-   - User prompt: URL, domain, title, author, content sample, master tag list
-   - Response: CSV or JSON array of proposed tags
-   - Fallback: If no API key, use heuristic (keyword matching against master tags)
+3. **ChatCompletion** (LLM-assisted tag generation with multi-provider fallback)
+   - **Architecture**: Use LangChain abstractions for provider independence
+   - **Providers**: ChatGPT (OpenAI), Gemini (Google), Claude (Anthropic)
+   - **Model Selection**: Dynamic lookup from model registry (no hardcoded models)
+   - **Model Registry**:
+     - Scheduled sync from provider APIs (OpenAI, Anthropic, Google) every 7 days (configurable)
+     - Query provider APIs for available models (names, capabilities, pricing)
+     - Merge with local preference rankings (cheapest → most expensive)
+     - Store in `~/.config/diigo/models.json`
+   - **Fallback Chain**: Attempt providers/models in preference order on failures
+     1. Try cheapest model from preferred provider
+     2. On failure (API error, rate limit, auth failure), cycle to next provider/model
+     3. Continue through preference list until success or exhaustion
+   - **Temperature**: 0.2 (deterministic)
+   - **System prompt**: Enforce tagging rules (reuse master tags, add source:/author:, lowercase, hyphen/underscore rules)
+   - **User prompt**: URL, domain, title, author, content sample, master tag list
+   - **Response**: CSV or JSON array of proposed tags
+   - **Ultimate Fallback**: If all LLM providers fail or no API keys configured, use heuristic (keyword matching against master tags)
 
 ### UI Requirements
 
@@ -83,12 +101,19 @@
 diigo save <URL or text> [--desc "..."] [--dry-run] [--no-interactive] [--allow-new-tags]
 
 # Tag management commands
-diigo tags:show                          # Display master + cached tags
-diigo tags:sync --user <username> [--scope all|public]  # One-time fetch all user tags
+diigo tags:show [--show latest|top|chrono[logical]] [-n N]  # Display tags (N=0 for ALL)
+diigo tags:sync --user <username> [--scope all|public]       # Fetch all user tags (auto first-time, scheduled weekly)
+diigo tags:normalize                                          # Find/transform contextual duplicate tags (later phase)
 
 # Help
 diigo --help
 ```
+
+**Tag Display Options:**
+- `--show latest`: Show most recently used tags (default)
+- `--show top`: Show most frequently used tags
+- `--show chrono` or `--show chronological`: Show tags in chronological order (oldest first)
+- `-n N`: Show N tags (N=0 shows ALL tags)
 
 **Interactive Workflow (default):**
 1. Display extracted metadata:
@@ -108,6 +133,68 @@ diigo --help
 
 **Dry-Run Mode (`--dry-run`):**
 - Print exact API payload without calling Diigo API
+
+**WebUI (Later Phase):**
+- Browser-based interface for bookmark management
+- Calls REST API endpoints (not service layer directly)
+- Same functionality as CLI but with visual interface
+- Implementation in later development phase after CLI is stable
+
+### Architecture Requirements
+
+**Layered Design (per CLAUDE.md - SOLID principles, GoF patterns, TDD mandatory):**
+
+```
+┌─────────────────────────────────────────────────────┐
+│                  UI Layer                           │
+│  ┌──────────────┐              ┌─────────────────┐ │
+│  │     CLI      │              │     WebUI       │ │
+│  │  (stateless) │              │   (stateless)   │ │
+│  └──────┬───────┘              └────────┬────────┘ │
+│         │                               │          │
+│         │ direct method calls           │ HTTP     │
+│         │                               │          │
+└─────────┼───────────────────────────────┼──────────┘
+          │                               │
+          │                               │
+          │                   ┌───────────▼──────────┐
+          │                   │   REST API Layer     │
+          │                   │ (HTTP endpoints for  │
+          │                   │   WebUI only)        │
+          │                   │    (stateless)       │
+          │                   └───────────┬──────────┘
+          │                               │
+          │ method calls                  │ method calls
+          │                               │
+┌─────────▼───────────────────────────────▼──────────┐
+│                 Service Layer                      │
+│          (Business Logic - shared)                 │
+│  ┌──────────────┐  ┌──────────────┐               │
+│  │   Bookmark   │  │     Tag      │               │
+│  │   Service    │  │   Service    │  (etc.)       │
+│  └──────┬───────┘  └──────┬───────┘               │
+└─────────┼──────────────────┼────────────────────────┘
+          │                  │
+          │ method calls     │
+          │                  │
+┌─────────▼──────────────────▼────────────────────────┐
+│         Repository/Client Layer                     │
+│  ┌────────────┐  ┌────────────┐  ┌──────────────┐  │
+│  │   Diigo    │  │    LLM     │  │    Cache     │  │
+│  │   Client   │  │  Provider  │  │  (SQLite/    │  │
+│  │ (REST API) │  │ (LangChain)│  │  VectorDB)   │  │
+│  └────────────┘  └────────────┘  └──────────────┘  │
+└─────────────────────────────────────────────────────┘
+```
+
+**Design Principles:**
+- **CLI → Services**: Direct method calls (no HTTP overhead, stateless, local)
+- **WebUI → REST API → Services**: HTTP via REST API for remote access
+- **Service Layer**: Shared business logic used by both CLI and WebUI
+- **Separation of Concerns**: Each layer has single responsibility
+- **No MCP**: Decided against Model Context Protocol - LLM doesn't need direct Diigo access
+- **Clean REST/API Client Layer**: Diigo interaction through well-defined client interface
+- **TDD**: Comprehensive test coverage for all layers per CLAUDE.md requirements
 
 ### Security Requirements
 
@@ -237,12 +324,19 @@ AND still adds source: and author: tags
 AND proceeds with save as normal
 ```
 
-### AC8: Error Handling - Missing Credentials
+### AC8: Error Handling - Missing Prerequisites
 ```
-GIVEN DIIGO_USER, DIIGO_PASS, or DIIGO_API_KEY is missing
+GIVEN DIIGO_USER, DIIGO_PASS, or DIIGO_API_KEY is missing from .env
 WHEN user runs any command requiring Diigo API
-THEN tool prints "⚠️ Missing credentials in env/.env: DIIGO_USER, DIIGO_PASS, DIIGO_API_KEY"
-AND exits with error (no crash)
+THEN CLI prints "⚠️ Missing credentials in .env: DIIGO_USER, DIIGO_PASS, DIIGO_API_KEY"
+AND CLI exits with error code (no crash)
+AND WebUI displays error message with instructions
+
+GIVEN tag cache does not exist at ~/.config/diigo/cache/
+WHEN user runs `diigo save <URL>`
+THEN CLI prints "⚠️ Tag cache missing. Please run: diigo tags:sync --user <username>"
+AND CLI exits with error code
+AND WebUI displays error message with sync instructions
 ```
 
 ### AC9: Error Handling - API Failures
@@ -257,10 +351,26 @@ AND exits with error
 
 ### AC10: Tag Display
 ```
-GIVEN user runs `diigo tags:show`
-WHEN tag cache exists at ~/.diigo_tags
-THEN tool prints "Master tags:" followed by merged list (master_tags + cached tags)
-AND displays each tag on separate line with "- " prefix
+GIVEN user runs `diigo tags:show --show top -n 20`
+WHEN tag cache exists at ~/.config/diigo/cache/
+THEN tool prints "Master tags:" followed by top 20 most frequently used tags
+AND displays each tag on separate line with usage count
+AND respects display options: latest (default), top (frequency), chronological (oldest first)
+AND -n 0 displays ALL tags
+```
+
+### AC11: Tag Normalization (Later Phase)
+```
+GIVEN user runs `diigo tags:normalize`
+WHEN tag cache contains contextual duplicates (e.g., "ai_agent" with 1 use, "ai-agent" with 50 uses)
+THEN tool uses NLP/semantic similarity algorithm to detect variants
+AND identifies canonical form (highest usage count)
+AND prompts user: "Transform 'ai_agent' (1 use) → 'ai-agent' (50 uses)? [Y/n]"
+AND on confirmation, calls Diigo API to update all bookmarks with low-usage tag
+AND updates local cache to reflect transformation
+AND prints summary: "✅ Normalized 3 tags across 12 bookmarks"
+
+NOTE: Requires verification that Diigo API supports absolute tag list replacement
 ```
 
 ## Dependencies
@@ -289,9 +399,13 @@ AND displays each tag on separate line with "- " prefix
 - ✅ pytest, black, ruff (VALIDATED: Dev/test tools)
 
 ### Data Prerequisites
-- ❌ ~/.diigo_tags cache file (BLOCKER: Must run `tags:sync` once before first use to populate cache)
-  - Workaround: Tool works without cache but won't maximize tag reuse
-- ⚠️ .env file with credentials (UNVALIDATED: User must create manually from .env.example)
+- ❌ ~/.config/diigo/cache/ tag cache (BLOCKER: Must run `tags:sync` once before first use to populate cache)
+  - Auto-sync on first run (prompts user)
+  - Scheduled weekly sync thereafter (configurable)
+  - CLI exits with error if missing; WebUI displays error message
+- ❌ .env file with credentials (BLOCKER: User must create from .env.example before first use)
+  - CLI exits with error if missing; WebUI displays error message
+- ⚠️ ~/.config/diigo/models.json model registry (UNVALIDATED: Auto-created on first LLM call, synced every 7 days)
 
 ### Feature Dependencies
 - ✅ If implementing within existing project: Poetry for dependency management (VALIDATED: pyproject.toml provided)
@@ -374,51 +488,78 @@ AND displays each tag on separate line with "- " prefix
 
 ## Open Questions
 
-1. **What happens if Diigo API returns duplicate tag error?** (Engineering/Diigo Support)
-   - Current assumption: Diigo normalizes tags automatically
-   - Need to test: What if user sends "AI-Agent,ai-agent,AI_AGENT" in same request?
+### Resolved Questions (from Brooke)
 
-2. **Should we support batch bookmark import from CSV/JSON?** (Product/Brooke)
-   - Current scope: One bookmark at a time
-   - Use case: Migrating from another service (Pinboard, Raindrop.io)
+1. **What happens if Diigo API returns duplicate tag error?** ✅ RESOLVED
+   - **Decision**: Don't think Diigo cares, but run test to verify behavior
+   - Action: Test sending "AI-Agent,ai-agent,AI_AGENT" in same request during implementation
 
-3. **How to handle bookmarks with no detectable author?** (Engineering/UX)
-   - Current: Skip author: tag entirely
-   - Alternative: Add "author:unknown" or leave field empty in Diigo?
+2. **Should we support batch bookmark import from CSV/JSON?** ✅ RESOLVED
+   - **Decision**: Low priority, later phase
+   - Scope: Focus on one-at-a-time workflow for initial release
 
-4. **Should tags:sync be automatic on first run?** (UX/Brooke)
-   - Current: Manual command, blocking if not run
-   - Alternative: Auto-detect missing cache and prompt "Run tags:sync now? [Y/n]"
+3. **How to handle bookmarks with no detectable author?** ✅ RESOLVED
+   - **Decision**: Not an error - keep accessible log explaining missing metadata
+   - Current approach: Skip author: tag entirely (no "author:unknown")
 
-5. **What's the maximum acceptable tag count per bookmark?** (Business/Diigo API)
-   - Current: No limit enforced (LLM proposes 6-12, validation may reduce to ~4-8)
-   - Diigo API docs don't specify max tags per bookmark
+4. **Should tags:sync be automatic on first run?** ✅ RESOLVED
+   - **Decision**: Error if cache missing, auto-sync on first time (with prompt), scheduled weekly syncs thereafter
+   - UX: CLI exits with error and instructions; WebUI displays error message with sync button
 
-6. **Should we cache fetched page HTML locally to avoid re-fetching?** (Engineering)
-   - Current: Fetch page every time (even in dry-run)
-   - Trade-off: Cache would speed up re-runs but add complexity
+5. **What's the maximum acceptable tag count per bookmark?** ✅ RESOLVED
+   - **Decision**: No hard limit but suggest 12 as realistic
+   - LLM will propose reasonable number, user can edit if needed
 
-7. **Do we need a tags:top command to show most-used tags?** (UX/Brooke)
-   - Mentioned in original conversation but not implemented
-   - Could be useful for sanity-checking cache: `diigo tags:top --n 30`
+6. **Should we cache fetched page HTML locally to avoid re-fetching?** ✅ RESOLVED
+   - **Decision**: Don't worry about it - too complex for initial release
+   - Fetch page every time (performance is acceptable with <5s target)
+
+7. **Do we need tags:top/latest/chrono commands?** ✅ RESOLVED
+   - **Decision**: Implemented as `--show latest|top|chrono[logical] -n N` flags on tags:show
+   - See AC10 for full specification
+
+### Remaining Open Questions
+
+8. **Tag normalization algorithm complexity** (Engineering/AI)
+   - NLP/semantic detection for hyphen vs underscore distinction - how complex is this?
+   - Fallback: Preserve hyphens, convert spaces to underscores if NLP too complex
+
+9. **Does Diigo API support absolute tag replacement?** (Diigo API/Engineering)
+   - Required for `tags:normalize` feature to transform tags across bookmarks
+   - Need to test: Can we replace tag "ai_agent" with "ai-agent" across all bookmarks atomically?
+
+10. **SQLite vs VectorDB for tag cache?** (Architecture/Engineering)
+    - SQLite: Fast queries, familiar, lightweight
+    - VectorDB: Similarity/context searches for better tag matching
+    - Decision needed in architecture phase: Use both? Just SQLite initially?
 
 ## Next Steps
 
 ### Immediate Actions
-1. ✅ **Create this BSA analysis file** (docs/features/diigo-cli-llm-assisted/01-bsa-analysis.md)
-2. ⚠️ **Verify Diigo API key is available** (Brooke: check Diigo account settings)
-3. ⚠️ **Verify OpenAI API key is available** (Brooke: check OpenAI account)
-4. ⚠️ **Resolve: Should tool auto-prompt for tags:sync if cache missing?** (Brooke: decide on UX)
-5. ⚠️ **Resolve: Do we need tags:top command?** (Brooke: yes/no)
+1. ✅ **Create this BSA analysis file** (docs/features/diigo-cli-llm-assisted/01-bsa-analysis.md) - COMPLETED
+2. ✅ **Update BSA with all stakeholder feedback** - COMPLETED
+3. ⚠️ **Verify Diigo API key is available** (Brooke: check Diigo account settings)
+4. ⚠️ **Verify LLM provider API keys available** (Brooke: check OpenAI/Anthropic/Google accounts)
 
 ### File Handoff
 - **File saved**: `docs/features/diigo-cli-llm-assisted/01-bsa-analysis.md`
 - **Handoff to**: System Architect (reads this file for architecture design)
-- **Next file**: `02-architecture-design.md` (schema, API contracts, component design)
+- **Next file**: `02-architecture-design.md` (schema, API contracts, component design, database design)
+
+### Key Architectural Decisions to Detail in 02-architecture-design.md
+- SQLite schema for tag cache (or VectorDB, or both)
+- LLM provider fallback implementation (LangChain abstractions)
+- Model registry structure and sync mechanism
+- Tag normalization algorithm (NLP/semantic detection)
+- Service layer contracts (BookmarkService, TagService, etc.)
+- REST API endpoints for WebUI
+- Clean Diigo client interface (no MCP)
 
 ### Implementation Readiness
-- ✅ Requirements are clear and testable (all acceptance criteria are GIVEN-WHEN-THEN)
-- ✅ Dependencies are identified (need to confirm API keys available)
-- ⚠️ Some assumptions need validation (Diigo API behavior on duplicate URLs, rate limits)
+- ✅ Requirements are clear and testable (11 acceptance criteria with GIVEN-WHEN-THEN)
+- ✅ All stakeholder questions resolved (7/7 answered)
+- ✅ Dependencies identified and validated
+- ✅ Architecture approach confirmed (layered design, SOLID, TDD)
+- ⚠️ Some technical details need validation (Diigo API duplicate behavior, tag replacement support)
 - ✅ Risks are manageable (no blockers, mitigations exist for HIGH/MEDIUM risks)
-- **READY TO PROCEED** to architecture design phase once open questions 2, 4, 5, 7 are resolved with Brooke
+- **READY TO PROCEED** to architecture design phase (02-architecture-design.md)
