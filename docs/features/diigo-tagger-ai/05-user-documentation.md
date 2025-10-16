@@ -3,8 +3,8 @@
 **Project**: diigo-tagger-ai
 **Created**: October 15, 2025
 **Tech Writer**: Claude
-**Status**: Ready for QA Review
-**Input**: `01-bsa-analysis.md`, `02-architecture-design.md`, `03-data-engineering-plan.md`, `04-security-audit.md`
+**Status**: Updated October 16, 2025 to match v1.0.0 implementation
+**Input**: `01-bsa-analysis.md`, `02-architecture-design.md`, `03-data-engineering-plan.md`, `04-security-audit.md`, actual CLI code
 
 ---
 
@@ -104,8 +104,6 @@ Create `.env` file in your project directory:
 
 ```bash
 # .env
-DIIGO_USER=your_username
-DIIGO_PASS=your_password
 DIIGO_API_KEY=your_diigo_api_key
 OPENAI_API_KEY=sk-your_openai_key
 ```
@@ -115,80 +113,83 @@ OPENAI_API_KEY=sk-your_openai_key
 - Run `chmod 600 .env` to restrict file permissions (Unix/macOS)
 - Add `.env` to your `.gitignore` file
 
-### Step 3: Sync Your Existing Tags
+### Step 3: Initialize Database
 
 ```bash
-diigo tags:sync --user your_username
+diigo init
 ```
 
 **What this does**:
-- Fetches all your existing bookmarks from Diigo
+- Creates SQLite database with FTS5 schema
+- Default location varies by platform:
+  - **macOS**: `~/Library/Application Support/diigo-tagger/tags.db`
+  - **Linux**: `~/.config/diigo-tagger/tags.db`
+  - **Windows**: `%APPDATA%\diigo-tagger\tags.db`
+- Custom location: `diigo init --db-path /path/to/tags.db`
+
+### Step 4: Sync Your Existing Tags
+
+```bash
+diigo sync --count 100
+```
+
+**What this does**:
+- Fetches bookmarks from Diigo API
 - Extracts unique tag names
-- Stores them in local database (`~/.diigo/tags.db`)
-- **Runtime**: 1-5 minutes for thousands of bookmarks
+- Stores them in local database
+- `--count`: Number of bookmarks to fetch (default: 100)
+- **Runtime**: ~10-30 seconds for 100 bookmarks
 
 **Expected output**:
 ```
-🔄 Syncing tags from Diigo...
-   Fetching bookmarks: 1247/1247 [████████████] 100%
-   Found 3,421 unique tags
-✅ Tag database updated: ~/.diigo/tags.db
+Fetching 100 bookmarks from Diigo...
+✓ Fetched 100 bookmarks
+✓ Added 247 new tags, updated 89 existing tags
 ```
 
-### Step 4: Save Your First Bookmark
+### Step 5: Generate Tags with AI
 
 ```bash
-diigo save "https://example.com/article"
+diigo generate --title "How to Build CLI Tools" --url "https://example.com/article"
 ```
 
 **What happens**:
-1. Tool fetches the webpage
-2. Extracts title, author, description
-3. Sends metadata to LLM for tag generation
-4. Shows you a preview with proposed tags
-5. Asks for confirmation before saving
+1. Sends metadata to OpenAI (GPT-4o-mini)
+2. AI generates relevant tags based on title, URL, and description
+3. Returns list of suggested tags
+4. **v1.0 Note**: Tags are NOT automatically saved to Diigo - use this for preview only
 
-**Example interaction**:
+**Example output**:
 ```
-🌐 Fetching: https://example.com/article
-📄 Extracted metadata:
-   Title: How to Build CLI Tools with Python
-   Author: Jane Doe
+Generating tags for: How to Build CLI Tools
 
-🤖 Generating tags with OpenAI (gpt-4o-mini)...
+✓ Generated 6 tags:
 
-Proposed bookmark:
-
-URL:    https://example.com/article
-Title:  How to Build CLI Tools with Python
-Author: Jane Doe
-Desc:   A comprehensive guide to building command-line tools...
-
-Tags:   python, cli-tools, command-line, development,
-        source:example.com, author:jane-doe
-
-Unknown tags (will be added):
-  - cli-tools → Similar: cli, command-line-interface (0.82)
-
-Save to Diigo? [Y/n/e]:
+  python
+  cli-tools
+  command-line
+  development
+  tutorial
+  programming
 ```
 
-**Options**:
-- `Y` or Enter: Save bookmark
-- `n`: Cancel (don't save)
-- `e`: Edit tags manually
+**Optional parameters**:
+- `--description "Article summary"`: Add context for better tag generation
+- `--max-tags 5`: Limit number of tags (default: 8)
 
-### Step 5: Search Your Tags
+### Step 6: Search Your Tags
 
 **Wildcard search** (fast, uses FTS5):
 ```bash
-diigo tags:search "*python*"
+diigo search "*python*"
 ```
 
-**Semantic search** (finds related tags):
+**Semantic search** (finds related tags using embeddings):
 ```bash
-diigo tags:similar "machine learning"
+diigo search "machine learning" --semantic --threshold 0.75
 ```
+
+**⚠️ v1.0 Limitation**: Semantic search requires embeddings to be pre-stored in the database. Embeddings are not automatically generated during sync in v1.0.
 
 ---
 
@@ -198,351 +199,381 @@ diigo tags:similar "machine learning"
 
 **Required**:
 ```bash
-DIIGO_USER=your_username         # Diigo login username
-DIIGO_PASS=your_password          # Diigo password (plain text, see security note)
 DIIGO_API_KEY=abc123              # From Diigo Settings → API Key
 OPENAI_API_KEY=sk-...             # From OpenAI dashboard
 ```
 
 **Optional**:
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...      # For Anthropic Claude fallback
-```
-
-### Configuration File (Advanced)
-
-Create `~/.diigo-tagger.yml` for advanced settings:
-
-```yaml
-# LLM Provider Configuration
-llm_providers:
-  - provider: openai
-    model: gpt-4o-mini
-    priority: 1
-    temperature: 0.2
-    max_tokens: 150
-
-  - provider: anthropic
-    model: claude-3-haiku-20240307
-    priority: 2
-    temperature: 0.2
-    max_tokens: 150
-
-  - provider: ollama
-    model: llama3.2
-    priority: 3
-    temperature: 0.2
-    endpoint: http://localhost:11434
-
-# Tag Reconciliation Settings
-reconciliation:
-  fuzzy_max_distance: 2              # Levenshtein distance threshold
-  semantic_threshold: 0.75           # Cosine similarity threshold (0-1)
-  auto_merge: false                  # Manual merge by default
-
-# Database Settings
-database:
-  path: ~/.diigo/tags.db            # SQLite database location
-  enable_embeddings: true            # Enable semantic search
-
-# UI Settings
-ui:
-  color_scheme: auto                 # auto | light | dark
-  show_progress: true                # Progress bars for long operations
+DIIGO_DB_PATH=/custom/path/tags.db  # Override default database location
 ```
 
 ### Database Location
 
-**Default**: `~/.diigo/tags.db`
+**Default locations** (cross-platform using platformdirs):
+- **macOS**: `~/Library/Application Support/diigo-tagger/tags.db`
+- **Linux**: `~/.config/diigo-tagger/tags.db`
+- **Windows**: `%APPDATA%\diigo-tagger\tags.db`
 
 **Custom location**:
 ```bash
+# Option 1: Environment variable
 export DIIGO_DB_PATH=/path/to/custom/tags.db
+
+# Option 2: CLI parameter (any command)
+diigo init --db-path /path/to/custom/tags.db
+diigo sync --db-path /path/to/custom/tags.db
+diigo search "query" --db-path /path/to/custom/tags.db
 ```
 
 ---
 
 ## Command Reference
 
-### `diigo save <url>`
+### `diigo init`
 
-Save a bookmark to Diigo with AI-generated tags.
+Initialize database with schema (one-time setup).
 
 **Usage**:
 ```bash
-diigo save <url> [options]
+diigo init [options]
 ```
 
-**Arguments**:
-- `url` (required): URL to bookmark, or text content
-
 **Options**:
-- `--dry-run`: Show what would be saved without actually saving
-- `--no-interactive`: Skip confirmation prompt (batch mode)
-- `--allow-new-tags`: Allow tags not in database (default: warn)
-- `--force`: Auto-approve (combine with `--no-interactive`)
-- `--desc <text>`: Override LLM-generated description
+- `--db-path PATH`: Custom database location (default: platform-specific)
 
 **Examples**:
 
 ```bash
-# Interactive save (default)
-diigo save "https://example.com/article"
+# Initialize with default location
+diigo init
 
-# Dry run (preview without saving)
-diigo save "https://example.com/article" --dry-run
-
-# Batch mode (no prompts)
-diigo save "https://example.com/article" --no-interactive --force
-
-# Custom description
-diigo save "https://example.com/article" --desc "My custom description"
-```
-
-**Exit codes**:
-- `0`: Success
-- `1`: Network error (URL unreachable)
-- `2`: LLM API error (all providers failed)
-- `3`: User cancelled
-- `4`: Diigo API error
-
----
-
-### `diigo tags:sync --user <username>`
-
-Sync tags from Diigo to local database (one-time setup).
-
-**Usage**:
-```bash
-diigo tags:sync --user <username> [options]
-```
-
-**Arguments**:
-- `--user` (required): Your Diigo username
-
-**Options**:
-- `--force`: Re-sync even if database exists
-- `--clear`: Clear existing tags before syncing
-
-**Examples**:
-
-```bash
-# Initial sync
-diigo tags:sync --user brooke
-
-# Force re-sync
-diigo tags:sync --user brooke --force
-
-# Clear and re-sync
-diigo tags:sync --user brooke --clear
+# Custom location
+diigo init --db-path /path/to/tags.db
 ```
 
 **What it does**:
-1. Fetches all bookmarks via Diigo API (paginated)
-2. Extracts unique tag names
-3. Counts usage frequency for each tag
-4. Stores in SQLite database with `source='master'`
+1. Creates SQLite database file
+2. Creates tables for tags with FTS5 full-text search
+3. Sets up indexes for performance
+
+**Default locations**:
+- **macOS**: `~/Library/Application Support/diigo-tagger/tags.db`
+- **Linux**: `~/.config/diigo-tagger/tags.db`
+- **Windows**: `%APPDATA%\diigo-tagger\tags.db`
+
+**Expected output**:
+```
+✓ Database initialized successfully
+  Location: ~/Library/Application Support/diigo-tagger/tags.db
+```
+
+---
+
+### `diigo sync`
+
+Sync bookmarks from Diigo and update tag database.
+
+**Usage**:
+```bash
+diigo sync [options]
+```
+
+**Options**:
+- `--count N`: Number of bookmarks to fetch (default: 100)
+- `--db-path PATH`: Database location (default: platform-specific)
+
+**Examples**:
+
+```bash
+# Sync 100 bookmarks (default)
+diigo sync
+
+# Sync 500 bookmarks
+diigo sync --count 500
+
+# Custom database location
+diigo sync --count 100 --db-path /path/to/tags.db
+```
+
+**Requirements**:
+- Environment variable: `DIIGO_API_KEY`
+
+**What it does**:
+1. Fetches bookmarks via Diigo API (paginated)
+2. Extracts unique tag names from each bookmark
+3. Updates or creates tag records with usage counts
+4. Tags are stored with `source='user'`
 
 **Performance**:
-- ~100 bookmarks/second
-- 2000 bookmarks ≈ 20 seconds
-- Shows progress bar with ETA
+- ~100 bookmarks in 10-30 seconds (depends on API response time)
+- Shows progress during fetch
+
+**Expected output**:
+```
+Fetching 100 bookmarks from Diigo...
+✓ Fetched 100 bookmarks
+✓ Added 247 new tags, updated 89 existing tags
+```
 
 ---
 
-### `diigo tags:search <pattern>`
+### `diigo search`
 
-Search tags using wildcard patterns (fast FTS5 search).
+Search for tags using wildcard or semantic similarity.
 
 **Usage**:
 ```bash
-diigo tags:search <pattern> [options]
+diigo search QUERY [options]
 ```
 
 **Arguments**:
-- `pattern` (required): Wildcard pattern (e.g., `*python*`)
+- `QUERY` (required): Search query or wildcard pattern
 
 **Options**:
-- `--limit <n>`: Max results to show (default: 50)
-- `--sort <field>`: Sort by `count`, `name`, or `last_used` (default: `count`)
+- `--semantic`: Use semantic similarity search (requires embeddings)
+- `--threshold N`: Similarity threshold for semantic search (default: 0.8)
+- `--limit N`: Maximum results to return (default: 20)
+- `--db-path PATH`: Database location (default: platform-specific)
 
 **Examples**:
 
 ```bash
-# Find tags containing "python"
-diigo tags:search "*python*"
+# Wildcard search (FTS5)
+diigo search "*python*"
+diigo search "cli*"
 
-# Find tags starting with "git"
-diigo tags:search "git*"
-
-# Show top 10 most-used tags
-diigo tags:search "*" --limit 10 --sort count
+# Semantic search (embeddings)
+diigo search "machine learning" --semantic
+diigo search "version control" --semantic --threshold 0.7 --limit 10
 ```
 
-**Output**:
-```
-Tag                    Count   Last Used
-─────────────────────────────────────────
-python                 247     2025-10-15
-python-library         89      2025-10-12
-python3                45      2025-10-10
-micropython            12      2025-09-20
-```
+**Wildcard search** (default):
+- Uses SQLite FTS5 full-text search
+- Fast (< 50ms for thousands of tags)
+- Supports `*` wildcard for pattern matching
+- No additional setup required
 
-**Performance**: < 50ms for thousands of tags
+**Semantic search** (`--semantic` flag):
+- Uses cosine similarity with embeddings
+- Finds conceptually related tags
+- **⚠️ v1.0 Limitation**: Requires embeddings to be pre-stored in database
+- Embeddings are NOT auto-generated during sync in v1.0
+
+**Expected output**:
+```
+Searching for tags matching '*python*'...
+
+Found 4 tags:
+
+  python                        (used 247 times)
+  python-library                (used 89 times)
+  python3                       (used 45 times)
+  micropython                   (used 12 times)
+```
 
 ---
 
-### `diigo tags:similar <query>`
+### `diigo merge`
 
-Find semantically similar tags using embeddings.
+Merge multiple tags into a single canonical tag.
 
 **Usage**:
 ```bash
-diigo tags:similar <query> [options]
+diigo merge --source TAG1 --source TAG2 --target TAG [options]
 ```
 
-**Arguments**:
-- `query` (required): Natural language query (e.g., "machine learning")
-
 **Options**:
-- `--threshold <n>`: Similarity threshold 0-1 (default: 0.75)
-- `--limit <n>`: Max results (default: 10)
+- `--source TAG`: Source tag to merge (can specify multiple)
+- `--target TAG`: Target tag to merge into (required)
+- `--db-path PATH`: Database location (default: platform-specific)
 
 **Examples**:
 
 ```bash
-# Find tags related to "machine learning"
-diigo tags:similar "machine learning"
+# Merge single tag
+diigo merge --source gitworkflow --target git-workflow
 
-# Lower threshold for more results
-diigo tags:similar "version control" --threshold 0.65
-```
-
-**Output**:
-```
-Tag                    Similarity   Count
-──────────────────────────────────────────
-machine-learning       0.95         156
-ml                     0.89         78
-deep-learning          0.83         45
-neural-networks        0.79         34
-ai                     0.76         89
-```
-
-**First-time setup**:
-```
-⚠️  Semantic search requires downloading 80MB embedding model.
-   Model: sentence-transformers/all-MiniLM-L6-v2
-   This is a one-time download.
-
-   Proceed? [Y/n]:
-```
-
-**Performance**: < 500ms for 10,000 tags
-
----
-
-### `diigo tags:show`
-
-List all tags in database.
-
-**Usage**:
-```bash
-diigo tags:show [options]
-```
-
-**Options**:
-- `--source <type>`: Filter by source (`user`, `master`, `system`)
-- `--limit <n>`: Max tags to show (default: 100)
-- `--sort <field>`: Sort by `count`, `name`, `last_used` (default: `count`)
-
-**Examples**:
-
-```bash
-# Show top 100 tags
-diigo tags:show
-
-# Show only user-created tags
-diigo tags:show --source user
-
-# Show all system tags
-diigo tags:show --source system --limit 1000
-```
-
----
-
-### `diigo tags:merge <from> <to>`
-
-Manually merge duplicate tags (v1.1 feature).
-
-**Usage**:
-```bash
-diigo tags:merge <from> <to>
-```
-
-**Example**:
-```bash
-# Merge "gitworkflow" into "git-workflow"
-diigo tags:merge gitworkflow git-workflow
+# Merge multiple tags
+diigo merge --source ml --source ML --source machine_learning --target machine-learning
 ```
 
 **What it does**:
-1. Updates all bookmarks using `<from>` to use `<to>`
-2. Increments count for `<to>`
-3. Deletes `<from>` tag from database
+1. Combines usage counts from source tags into target tag
+2. Removes source tags from database
+3. **⚠️ v1.0 Note**: Only updates local database, does NOT update bookmarks in Diigo
+
+**Expected output**:
+```
+Merging ['gitworkflow', 'git-workflow-old'] → 'git-workflow'...
+✓ Tags merged successfully
+```
 
 ---
 
-### `diigo tags:export`
+### `diigo generate`
 
-Export tags to CSV for backup.
+Generate tag suggestions using AI (GPT-4o-mini).
 
 **Usage**:
 ```bash
-diigo tags:export [options]
+diigo generate --title TITLE --url URL [options]
 ```
 
 **Options**:
-- `--output <path>`: Output file (default: `tags_export.csv`)
+- `--title TEXT`: Bookmark title (required)
+- `--url URL`: Bookmark URL (required)
+- `--description TEXT`: Optional description for better context
+- `--max-tags N`: Maximum number of tags to generate (default: 8)
 
-**Example**:
+**Examples**:
+
 ```bash
-diigo tags:export --output ~/Dropbox/diigo_backup.csv
+# Basic tag generation
+diigo generate --title "How to Build CLI Tools" --url "https://example.com/article"
+
+# With description and tag limit
+diigo generate \
+  --title "Python CLI Tutorial" \
+  --url "https://example.com/python-cli" \
+  --description "Comprehensive guide to building command-line tools with Python" \
+  --max-tags 5
 ```
 
-**Output format**:
-```csv
-name,count,last_used,source
-python,247,2025-10-15T14:30:00,master
-cli-tools,12,2025-10-15T10:15:00,user
-source:github.com,156,2025-10-14T22:45:00,system
+**Requirements**:
+- Environment variable: `OPENAI_API_KEY`
+
+**What it does**:
+1. Sends metadata to OpenAI GPT-4o-mini
+2. AI analyzes title, URL, and description
+3. Returns list of relevant tags
+4. **⚠️ v1.0 Note**: Tags are NOT saved to Diigo - this is a preview-only feature
+
+**Security**:
+- Includes prompt injection detection
+- API keys are never logged or displayed
+- All requests use HTTPS only
+
+**Expected output**:
+```
+Generating tags for: How to Build CLI Tools
+
+✓ Generated 6 tags:
+
+  python
+  cli-tools
+  command-line
+  development
+  tutorial
+  programming
+```
+
+---
+
+### `diigo list`
+
+List all tags in the database.
+
+**Usage**:
+```bash
+diigo list [options]
+```
+
+**Options**:
+- `--limit N`: Maximum number of tags to display (default: 50)
+- `--source TYPE`: Filter by source (`user`, `master`, `system`)
+- `--db-path PATH`: Database location (default: platform-specific)
+
+**Examples**:
+
+```bash
+# Show top 50 tags (default)
+diigo list
+
+# Show top 100 tags
+diigo list --limit 100
+
+# Show only user-created tags
+diigo list --source user
+
+# Show all system tags
+diigo list --source system --limit 1000
+```
+
+**What it does**:
+- Displays tags sorted by usage count (descending)
+- Shows tag name, count, and source
+- Helps identify popular tags and tag sources
+
+**Expected output**:
+```
+Showing 50 tags:
+
+Tag                            Count      Source
+--------------------------------------------------
+python                         247        user
+cli-tools                      89         user
+development                    156        user
+tutorial                       78         user
+programming                    145        user
 ```
 
 ---
 
 ## Workflows
 
-### Daily Workflow: Save Bookmarks
+### Initial Setup Workflow
 
 ```bash
-# 1. Save bookmark with interactive review
-diigo save "https://news.ycombinator.com/item?id=12345"
+# 1. Initialize database
+diigo init
 
-# 2. Review proposed tags, edit if needed
+# 2. Sync existing bookmarks from Diigo
+diigo sync --count 500
 
-# 3. Press 'Y' to save
+# 3. List tags to verify sync
+diigo list --limit 20
 ```
-
-**Time saved**: 2-3 minutes per bookmark (vs manual tagging)
 
 ---
 
-### Weekly Workflow: Tag Maintenance
+### Tag Generation Workflow (Preview Tags for New Bookmarks)
+
+```bash
+# Generate tag suggestions for a URL
+diigo generate \
+  --title "How to Build CLI Tools with Python" \
+  --url "https://example.com/python-cli" \
+  --description "A comprehensive tutorial"
+
+# Review suggested tags, then manually add to bookmark in Diigo web UI
+# (v1.0 does not auto-save bookmarks)
+```
+
+**v1.0 Note**: Tag generation is preview-only. You must manually copy tags to Diigo.
+
+---
+
+### Tag Search Workflow
+
+```bash
+# 1. Find tags with wildcard pattern
+diigo search "*python*"
+
+# 2. See usage statistics
+diigo list --source user --limit 50
+
+# 3. Search semantically (if embeddings available)
+diigo search "machine learning" --semantic --threshold 0.75
+```
+
+---
+
+### Tag Maintenance Workflow
 
 ```bash
 # 1. Search for potential duplicates
-diigo tags:search "*workflow*"
+diigo search "*workflow*"
 
 # Example output shows:
 # - git-workflow (count: 45)
@@ -550,44 +581,27 @@ diigo tags:search "*workflow*"
 # - workflow (count: 120)
 
 # 2. Merge duplicates
-diigo tags:merge gitworkflow git-workflow
+diigo merge --source gitworkflow --target git-workflow
 
-# 3. Backup tags
-diigo tags:export --output ~/backups/tags_$(date +%Y%m%d).csv
+# 3. Verify merge
+diigo search "*workflow*"
 ```
+
+**v1.0 Note**: Merge only updates local database. Does not update bookmarks in Diigo.
 
 ---
 
-### Batch Workflow: Import Multiple Bookmarks
+### Bulk Sync Workflow
 
 ```bash
-# Create file with URLs (one per line)
-cat > urls.txt <<EOF
-https://example.com/article1
-https://example.com/article2
-https://example.com/article3
-EOF
+# Sync large number of bookmarks in batches
+diigo sync --count 1000
 
-# Process all URLs in batch mode
-while read url; do
-  diigo save "$url" --no-interactive --force
-  sleep 2  # Rate limiting
-done < urls.txt
-```
+# Check database size
+diigo list --limit 10
 
----
-
-### Exploratory Workflow: Find Related Tags
-
-```bash
-# 1. Find tags related to topic
-diigo tags:similar "kubernetes deployment"
-
-# 2. Review similar tags:
-# - kubernetes, docker, containers, devops, cloud-native
-
-# 3. Use in searches
-diigo tags:search "*kubernetes*"
+# Re-sync to update counts
+diigo sync --count 1000
 ```
 
 ---
@@ -866,56 +880,70 @@ ERROR: Database is locked
 **Q: Is this tool official from Diigo?**
 A: No, this is an independent CLI tool using Diigo's public API.
 
-**Q: Does this work with other bookmarking services?**
-A: v1.0 supports only Diigo. Pinboard/Raindrop support planned for v1.1.
+**Q: What can v1.0 do?**
+A: v1.0 focuses on tag management and AI-powered tag generation. It can:
+- Sync bookmarks from Diigo to extract tags
+- Generate tag suggestions using AI (preview only)
+- Search tags with wildcard or semantic search
+- Merge duplicate tags locally
+- List and analyze tag usage
 
-**Q: Can I use this without OpenAI?**
-A: Yes, configure Anthropic or Ollama in `~/.diigo-tagger.yml`. Fallback uses keyword extraction.
+**Q: Can v1.0 save bookmarks to Diigo?**
+A: No. v1.0 generates tag suggestions only. You must manually copy tags to Diigo web UI. Bookmark saving planned for v1.1.
+
+**Q: Does this work with other bookmarking services?**
+A: v1.0 supports only Diigo. Pinboard/Raindrop support planned for future versions.
 
 **Q: Is my data sent to OpenAI?**
-A: Only metadata (title, author, 2000-char excerpt) is sent for tag generation. Full HTML never sent.
+A: Only when using `diigo generate`. The tool sends title, URL, and optional description for tag generation. No full HTML content is sent.
 
 ---
 
 ### Privacy & Security
 
 **Q: Are my credentials stored securely?**
-A: Credentials stored in plain-text `.env` file. Use file permissions (600) to restrict access. OS keychain support planned for v1.1.
+A: API keys stored in plain-text `.env` file. Use file permissions (chmod 600) to restrict access. Store `.env` outside version control.
 
 **Q: Can others access my tags?**
-A: Tags stored locally in `~/.diigo/tags.db`. No cloud sync. Your data stays on your machine.
+A: Tags stored locally in platform-specific database location. No cloud sync. Your data stays on your machine.
 
 **Q: What data is logged?**
-A: v1.0 has no logging. Optional audit logging planned for v1.1.
+A: v1.0 has minimal logging. Error messages are displayed to console but not persisted.
+
+**Q: Does this tool validate inputs for security?**
+A: Yes. Includes prompt injection detection, API key redaction from logs, and HTTPS-only API calls.
 
 ---
 
-### Features
+### Features & Limitations
 
-**Q: Can I edit tags before saving?**
-A: Yes, press `e` at the confirmation prompt to manually edit tags.
+**Q: Why doesn't `diigo generate` save bookmarks?**
+A: v1.0 is a tag preview tool. It helps you see what tags AI would suggest before manually adding the bookmark via Diigo web UI. Auto-save planned for v1.1.
 
-**Q: Can I save bookmarks without AI?**
-A: Use `--no-interactive --force` to skip review, but LLM still generates tags. Manual tagging not supported in v1.0.
+**Q: Can I use semantic search?**
+A: Yes, with `--semantic` flag, but only if embeddings are pre-stored in database. v1.0 does NOT auto-generate embeddings during sync.
+
+**Q: Does `diigo merge` update bookmarks in Diigo?**
+A: No. v1.0 merge only updates local database counts. It does NOT modify bookmarks stored in Diigo. Full sync planned for v1.1.
 
 **Q: Can I delete bookmarks?**
-A: No, this tool only creates bookmarks. Use Diigo web UI to delete.
+A: No, this tool is read-only for bookmarks. Use Diigo web UI to delete bookmarks.
 
-**Q: Does this update existing bookmarks?**
-A: Diigo API is idempotent - if URL exists, it updates tags. Otherwise creates new bookmark.
+**Q: Can I export tags?**
+A: Not in v1.0. You can query tags with `diigo list` but CSV export not implemented. Planned for future version.
 
 ---
 
 ### Troubleshooting
 
 **Q: Why are some tags rejected?**
-A: Tags must be lowercase, alphanumeric, and use hyphens only. Special characters are invalid.
+A: Tag validation depends on Diigo's rules. Generally, tags should be lowercase, alphanumeric, and use hyphens.
 
-**Q: Why is semantic search slow?**
-A: First use downloads 80MB model (~10 seconds). Subsequent searches are < 500ms.
+**Q: Why is semantic search not working?**
+A: Semantic search requires embeddings to be stored in database. v1.0 does not auto-generate embeddings. Ensure embeddings exist or use wildcard search instead.
 
 **Q: Can I use this offline?**
-A: No, requires internet for Diigo API and LLM API. Local LLM (Ollama) works offline after model download.
+A: No. Requires internet for Diigo API (`sync` command) and OpenAI API (`generate` command). Search and list work offline once database is synced.
 
 ---
 
@@ -973,28 +1001,19 @@ Thumbs.db
 Create `.env.example` for documentation (safe to commit):
 
 ```bash
-# Diigo Configuration
-DIIGO_USER=your_username_here
-DIIGO_PASS=your_password_here
+# Diigo API Configuration
 DIIGO_API_KEY=get_from_diigo_settings
 
-# LLM Configuration
+# OpenAI API Configuration
 OPENAI_API_KEY=sk-get_from_openai_dashboard
 
-# Optional: Anthropic (for fallback)
-# ANTHROPIC_API_KEY=sk-ant-get_from_anthropic
-
-# Optional: Database path (default: ~/.diigo/tags.db)
+# Optional: Custom database path
 # DIIGO_DB_PATH=/custom/path/tags.db
 ```
 
 ---
 
-**Documentation Status**: ✅ Complete
-**Last Updated**: October 15, 2025
+**Documentation Status**: ✅ Updated for v1.0.0 Implementation
+**Last Updated**: October 16, 2025
 **Version**: 1.0.0
-
-**Next Steps**:
-- Handoff to QAS Agent for test planning
-- QAS should validate all examples and commands
-- RTE should create deployment guide
+**Changes**: Updated all commands to match actual CLI implementation
