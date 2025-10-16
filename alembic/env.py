@@ -4,6 +4,7 @@ import os
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+from platformdirs import user_config_dir
 
 from alembic import context
 
@@ -17,9 +18,13 @@ config = context.config
 # Configure database URL at runtime
 db_path = os.getenv("DIIGO_DB_PATH")
 if not db_path:
-    # Default to ~/.config/diigo/tags.db (XDG Base Directory)
-    db_path = Path.home() / ".config" / "diigo" / "tags.db"
-    db_path.parent.mkdir(parents=True, exist_ok=True)
+    # Use platformdirs for cross-platform config directory
+    # macOS: ~/Library/Application Support/diigo-tagger
+    # Linux: ~/.config/diigo-tagger
+    # Windows: C:\Users\<user>\AppData\Local\diigo-tagger
+    config_dir = Path(user_config_dir("diigo-tagger"))
+    config_dir.mkdir(parents=True, exist_ok=True)
+    db_path = config_dir / "tags.db"
 
 config.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
 
