@@ -17,8 +17,8 @@ config = context.config
 # Configure database URL at runtime
 db_path = os.getenv("DIIGO_DB_PATH")
 if not db_path:
-    # Default to ~/.diigo/tags.db
-    db_path = Path.home() / ".diigo" / "tags.db"
+    # Default to ~/.config/diigo/tags.db (XDG Base Directory)
+    db_path = Path.home() / ".config" / "diigo" / "tags.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
 config.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
