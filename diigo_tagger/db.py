@@ -4,13 +4,16 @@
 import sqlite3
 from pathlib import Path
 from sqlalchemy import create_engine, event, Engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 from platformdirs import user_config_dir
 
 from .models import Base
 
 # Module-level engine cache to avoid creating multiple connection pools
 _engine_cache: dict[Path, Engine] = {}
+
+# Module-level session factory cache to avoid recreating sessionmakers
+_session_factory_cache: dict[Path, sessionmaker] = {}
 
 
 def check_sqlite_version() -> None:
@@ -70,28 +73,24 @@ def create_db_engine(db_path: Path | None = None) -> Engine:
     check_sqlite_version()
 
     # Get database path
-    db_path = get_db_path(db_path)
+    resolved_path = get_db_path(db_path)
 
-    # Return cached engine if it exists
-    if db_path in _engine_cache:
-        return _engine_cache[db_path]
+    # Create and cache engine if it doesn't exist
+    if resolved_path not in _engine_cache:
+        engine = create_engine(f"sqlite:///{resolved_path}")
 
-    # Create new engine
-    engine = create_engine(f"sqlite:///{db_path}")
+        # Enable WAL mode and foreign keys
+        @event.listens_for(engine, "connect")
+        def set_sqlite_pragma(dbapi_conn, connection_record):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
 
-    # Enable WAL mode and foreign keys
-    @event.listens_for(engine, "connect")
-    def set_sqlite_pragma(dbapi_conn, connection_record):
-        cursor = dbapi_conn.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA synchronous=NORMAL")
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+        _engine_cache[resolved_path] = engine
 
-    # Cache the engine
-    _engine_cache[db_path] = engine
-
-    return engine
+    return _engine_cache[resolved_path]
 
 
 def init_db(db_path: Path | None = None) -> Engine:
@@ -116,9 +115,11 @@ def init_db(db_path: Path | None = None) -> Engine:
     return engine
 
 
-def get_session(db_path: Path | None = None):
+def get_session(db_path: Path | None = None) -> Session:
     """
     Get SQLAlchemy session.
+
+    Uses cached session factory to avoid recreating sessionmaker on every call.
 
     Args:
         db_path: Path to SQLite database file. If None, uses default location
@@ -127,5 +128,10 @@ def get_session(db_path: Path | None = None):
         SQLAlchemy Session instance
     """
     engine = create_db_engine(db_path)
-    Session = sessionmaker(bind=engine)
-    return Session()
+    resolved_path = get_db_path(db_path)
+
+    # Return cached session factory if it exists, otherwise create and cache
+    if resolved_path not in _session_factory_cache:
+        _session_factory_cache[resolved_path] = sessionmaker(bind=engine)
+
+    return _session_factory_cache[resolved_path]()
