@@ -93,9 +93,58 @@ def create_db_engine(db_path: Path | None = None) -> Engine:
     return _engine_cache[resolved_path]
 
 
+def _setup_fts5(engine: Engine) -> None:
+    """
+    Set up FTS5 virtual table and triggers for tag search.
+
+    Internal helper function called by init_db().
+
+    Args:
+        engine: SQLAlchemy engine to use for setup
+    """
+    with engine.begin() as conn:
+        # Create FTS5 virtual table if it doesn't exist
+        conn.exec_driver_sql(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS tags_fts USING fts5(
+                name,
+                content=tags,
+                content_rowid=id
+            )
+            """
+        )
+
+        # Create triggers to keep FTS5 in sync
+        conn.exec_driver_sql(
+            """
+            CREATE TRIGGER IF NOT EXISTS tags_ai AFTER INSERT ON tags BEGIN
+                INSERT INTO tags_fts(rowid, name) VALUES (new.id, new.name);
+            END
+            """
+        )
+
+        conn.exec_driver_sql(
+            """
+            CREATE TRIGGER IF NOT EXISTS tags_ad AFTER DELETE ON tags BEGIN
+                DELETE FROM tags_fts WHERE rowid = old.id;
+            END
+            """
+        )
+
+        conn.exec_driver_sql(
+            """
+            CREATE TRIGGER IF NOT EXISTS tags_au AFTER UPDATE ON tags BEGIN
+                UPDATE tags_fts SET name = new.name WHERE rowid = old.id;
+            END
+            """
+        )
+
+
 def init_db(db_path: Path | None = None) -> Engine:
     """
     Initialize database with schema.
+
+    Creates tables and sets up FTS5 for tag search.
 
     Args:
         db_path: Path to SQLite database file. If None, uses default location
@@ -111,6 +160,9 @@ def init_db(db_path: Path | None = None) -> Engine:
 
     # Create all tables
     Base.metadata.create_all(engine)
+
+    # Set up FTS5 for wildcard search
+    _setup_fts5(engine)
 
     return engine
 
