@@ -5,6 +5,14 @@ import re
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
+from .constants import (
+    API_KEY_SHORT_THRESHOLD,
+    API_KEY_SHORT_VISIBLE_CHARS,
+    API_KEY_LONG_THRESHOLD,
+    API_KEY_LONG_VISIBLE_CHARS,
+    PROMPT_INJECTION_MAX_LENGTH,
+)
+
 
 def redact_api_key(api_key: str | None) -> str:
     """
@@ -28,13 +36,13 @@ def redact_api_key(api_key: str | None) -> str:
     if api_key is None or api_key == "":
         return "***"
 
-    if len(api_key) < 4:
+    if len(api_key) < API_KEY_SHORT_THRESHOLD:
         return "***"
 
-    if len(api_key) < 20:
-        return f"{api_key[:4]}***"
+    if len(api_key) < API_KEY_LONG_THRESHOLD:
+        return f"{api_key[:API_KEY_SHORT_VISIBLE_CHARS]}***"
 
-    return f"{api_key[:8]}***"
+    return f"{api_key[:API_KEY_LONG_VISIBLE_CHARS]}***"
 
 
 def is_valid_https_url(url: str | None) -> bool:
@@ -165,7 +173,7 @@ def detect_prompt_injection(text: str | None) -> InjectionDetectionResult:
             break
 
     # Pattern 5: Excessive length (potential DoS or hidden injection)
-    if len(text) > 10000:
+    if len(text) > PROMPT_INJECTION_MAX_LENGTH:
         patterns_detected.append("excessive_length")
 
     # Calculate confidence based on number of patterns
