@@ -8,6 +8,7 @@ readme = "README.md"
 homepage = "https://github.com/yourusername/diigo-tagger-ai"
 repository = "https://github.com/yourusername/diigo-tagger-ai"
 keywords = ["diigo", "bookmarks", "tagging", "ai", "llm", "cli"]
+packages = [{include = "diigo_tagger"}]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",

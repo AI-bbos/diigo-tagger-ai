@@ -6,12 +6,16 @@ import click
 from pathlib import Path
 from typing import Optional
 from contextlib import contextmanager
+from dotenv import load_dotenv
 
 from ..db import init_db, get_session
 from ..models import Tag
 from ..api.diigo_client import DiigoClient
 from ..api.openai_client import OpenAIClient
 from ..services.tag_reconciliation import TagReconciliationService
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 @contextmanager

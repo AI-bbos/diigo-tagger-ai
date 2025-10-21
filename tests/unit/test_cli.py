@@ -1,6 +1,7 @@
 # ABOUTME: Unit tests for CLI commands
 # ABOUTME: Tests Click command interface with mocked dependencies
 
+import os
 import pytest
 from click.testing import CliRunner
 from unittest.mock import Mock, patch, MagicMock
@@ -35,6 +36,7 @@ class TestCLISync:
 
     @patch("diigo_tagger.cli.main.DiigoClient")
     @patch("diigo_tagger.cli.main.get_session")
+    @patch.dict(os.environ, {}, clear=True)
     def test_sync_requires_api_key(self, mock_session, mock_client):
         """Should fail if DIIGO_API_KEY not set."""
         runner = CliRunner()
@@ -154,6 +156,7 @@ class TestCLIGenerateTags:
 
     @patch("diigo_tagger.cli.main.OpenAIClient")
     @patch("diigo_tagger.cli.main.get_session")
+    @patch.dict(os.environ, {}, clear=True)
     def test_generate_requires_api_key(self, mock_session, mock_client):
         """Should fail if OPENAI_API_KEY not set."""
         runner = CliRunner()
