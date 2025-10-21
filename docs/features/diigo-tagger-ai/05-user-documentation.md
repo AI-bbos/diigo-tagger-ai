@@ -71,7 +71,7 @@ pip install diigo-tagger-ai
 ```bash
 git clone https://github.com/yourusername/diigo-tagger-ai.git
 cd diigo-tagger-ai
-poetry install
+poetry install'
 poetry shell
 ```
 

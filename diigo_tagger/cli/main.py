@@ -113,6 +113,7 @@ def sync(count: int, db_path: Optional[str]):
     # Get credentials from environment
     api_key = os.getenv("DIIGO_API_KEY")
     username = os.getenv("DIIGO_USERNAME")
+    password = os.getenv("DIIGO_PASSWORD")
 
     if not api_key:
         click.echo("✗ Error: DIIGO_API_KEY environment variable not set", err=True)
@@ -122,8 +123,12 @@ def sync(count: int, db_path: Optional[str]):
         click.echo("✗ Error: DIIGO_USERNAME environment variable not set", err=True)
         raise click.Abort()
 
+    if not password:
+        click.echo("✗ Error: DIIGO_PASSWORD environment variable not set", err=True)
+        raise click.Abort()
+
     # Initialize Diigo client
-    client = DiigoClient(api_key=api_key, username=username)
+    client = DiigoClient(api_key=api_key, username=username, password=password)
 
     # Fetch bookmarks
     click.echo(f"Fetching {count} bookmarks from Diigo...")

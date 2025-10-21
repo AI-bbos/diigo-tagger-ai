@@ -40,18 +40,20 @@ class DiigoClient:
         self,
         api_key: str | None,
         username: str | None = None,
-        base_url: str = "https://secure.diigo.com/api/v2",
+        password: str | None = None,
+        base_url: str = "https://www.diigo.com/api/v2",
     ):
         """
         Initialize Diigo API client.
 
         Args:
             api_key: Diigo API key for authentication
-            username: Diigo username (required for API calls)
+            username: Diigo username (required for API calls and HTTP Basic Auth)
+            password: Diigo password (required for HTTP Basic Auth)
             base_url: Base URL for Diigo API (must be HTTPS)
 
         Raises:
-            ValueError: If API key/username is missing or base_url is not HTTPS
+            ValueError: If API key/username/password is missing or base_url is not HTTPS
         """
         if not api_key:
             raise ValueError("API key is required for Diigo client")
@@ -59,11 +61,15 @@ class DiigoClient:
         if not username:
             raise ValueError("Username is required for Diigo client")
 
+        if not password:
+            raise ValueError("Password is required for Diigo client")
+
         if not is_valid_https_url(base_url):
             raise ValueError(f"Base URL must use HTTPS: {base_url}")
 
         self.api_key = api_key
         self.username = username
+        self.password = password
         self.base_url = base_url
 
     def fetch_bookmarks(
@@ -83,7 +89,7 @@ class DiigoClient:
             Exception: On API errors (rate limit, auth failure, network errors)
         """
         url = f"{self.base_url}/bookmarks"
-        # Diigo API v2 uses API key as query parameter (not Authorization header)
+        # Diigo API v2 uses both HTTP Basic Auth AND API key as query parameter
         params = {
             "key": self.api_key,
             "user": self.username,
@@ -92,12 +98,23 @@ class DiigoClient:
         }
 
         try:
-            response = requests.get(url, params=params, timeout=30)
+            # Use HTTP Basic Authentication with username and password
+            from requests.auth import HTTPBasicAuth
+            auth = HTTPBasicAuth(self.username, self.password)
+            response = requests.get(url, params=params, auth=auth, timeout=30)
 
             if response.status_code == 401:
+                # Log details for debugging (without exposing full key)
+                import sys
+                print(f"DEBUG: Request URL: {response.url}", file=sys.stderr)
+                print(f"DEBUG: Params sent: key={redact_api_key(self.api_key)}, user={self.username}, count={params['count']}, start={params['start']}", file=sys.stderr)
+                print(f"DEBUG: Auth username: {self.username}", file=sys.stderr)
+                print(f"DEBUG: Response status: {response.status_code}", file=sys.stderr)
+                print(f"DEBUG: Response text: {response.text}", file=sys.stderr)
                 raise Exception(
                     f"Authentication failed with Diigo API. "
-                    f"Check API key: {redact_api_key(self.api_key)}"
+                    f"Check API key: {redact_api_key(self.api_key)} and username: {self.username}. "
+                    f"Response: {response.text}"
                 )
 
             if response.status_code == 429:
