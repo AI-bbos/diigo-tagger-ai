@@ -110,14 +110,20 @@ def init(db_path: Optional[str]):
 @handle_cli_errors
 def sync(count: int, db_path: Optional[str]):
     """Sync bookmarks from Diigo and update tag database."""
-    # Get API key from environment
+    # Get credentials from environment
     api_key = os.getenv("DIIGO_API_KEY")
+    username = os.getenv("DIIGO_USERNAME")
+
     if not api_key:
         click.echo("✗ Error: DIIGO_API_KEY environment variable not set", err=True)
         raise click.Abort()
 
+    if not username:
+        click.echo("✗ Error: DIIGO_USERNAME environment variable not set", err=True)
+        raise click.Abort()
+
     # Initialize Diigo client
-    client = DiigoClient(api_key=api_key)
+    client = DiigoClient(api_key=api_key, username=username)
 
     # Fetch bookmarks
     click.echo(f"Fetching {count} bookmarks from Diigo...")

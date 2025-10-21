@@ -13,12 +13,17 @@ class TestDiigoClient:
     def test_initialization_requires_api_key(self):
         """Should raise error if no API key provided."""
         with pytest.raises(ValueError, match="API key"):
-            DiigoClient(api_key=None)
+            DiigoClient(api_key=None, username="testuser")
+
+    def test_initialization_requires_username(self):
+        """Should raise error if no username provided."""
+        with pytest.raises(ValueError, match="Username"):
+            DiigoClient(api_key="test-key", username=None)
 
     def test_initialization_validates_https(self):
         """Should validate that base URL uses HTTPS."""
         with pytest.raises(ValueError, match="HTTPS"):
-            DiigoClient(api_key="test-key", base_url="http://insecure.com")
+            DiigoClient(api_key="test-key", username="testuser", base_url="http://insecure.com")
 
     @patch("diigo_tagger.api.diigo_client.requests.get")
     def test_fetch_bookmarks_success(self, mock_get):
@@ -36,7 +41,7 @@ class TestDiigoClient:
         ]
         mock_get.return_value = mock_response
 
-        client = DiigoClient(api_key="test-key")
+        client = DiigoClient(api_key="test-key", username="testuser")
         bookmarks = client.fetch_bookmarks(count=10)
 
         assert len(bookmarks) == 1
@@ -60,7 +65,7 @@ class TestDiigoClient:
         ]
         mock_get.return_value = mock_response
 
-        client = DiigoClient(api_key="test-key")
+        client = DiigoClient(api_key="test-key", username="testuser")
         bookmarks = client.fetch_bookmarks()
 
         assert bookmarks[0].tags == []
@@ -73,7 +78,7 @@ class TestDiigoClient:
         mock_response.text = "Rate limit exceeded"
         mock_get.return_value = mock_response
 
-        client = DiigoClient(api_key="test-key")
+        client = DiigoClient(api_key="test-key", username="testuser")
         with pytest.raises(Exception, match="Rate limit"):
             client.fetch_bookmarks()
 
@@ -85,7 +90,7 @@ class TestDiigoClient:
         mock_response.text = "Unauthorized"
         mock_get.return_value = mock_response
 
-        client = DiigoClient(api_key="invalid-key")
+        client = DiigoClient(api_key="invalid-key", username="testuser")
         with pytest.raises(Exception, match="Authentication failed"):
             client.fetch_bookmarks()
 
@@ -97,12 +102,14 @@ class TestDiigoClient:
         mock_response.json.return_value = []
         mock_get.return_value = mock_response
 
-        client = DiigoClient(api_key="test-key")
+        client = DiigoClient(api_key="test-key", username="testuser")
         client.fetch_bookmarks(count=50, start=10)
 
         # Verify request was made with correct params
         mock_get.assert_called_once()
         call_args = mock_get.call_args
+        assert call_args[1]["params"]["key"] == "test-key"
+        assert call_args[1]["params"]["user"] == "testuser"
         assert call_args[1]["params"]["count"] == 50
         assert call_args[1]["params"]["start"] == 10
 

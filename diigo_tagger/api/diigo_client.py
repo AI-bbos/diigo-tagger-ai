@@ -39,6 +39,7 @@ class DiigoClient:
     def __init__(
         self,
         api_key: str | None,
+        username: str | None = None,
         base_url: str = "https://secure.diigo.com/api/v2",
     ):
         """
@@ -46,18 +47,23 @@ class DiigoClient:
 
         Args:
             api_key: Diigo API key for authentication
+            username: Diigo username (required for API calls)
             base_url: Base URL for Diigo API (must be HTTPS)
 
         Raises:
-            ValueError: If API key is missing or base_url is not HTTPS
+            ValueError: If API key/username is missing or base_url is not HTTPS
         """
         if not api_key:
             raise ValueError("API key is required for Diigo client")
+
+        if not username:
+            raise ValueError("Username is required for Diigo client")
 
         if not is_valid_https_url(base_url):
             raise ValueError(f"Base URL must use HTTPS: {base_url}")
 
         self.api_key = api_key
+        self.username = username
         self.base_url = base_url
 
     def fetch_bookmarks(
@@ -77,11 +83,16 @@ class DiigoClient:
             Exception: On API errors (rate limit, auth failure, network errors)
         """
         url = f"{self.base_url}/bookmarks"
-        headers = {"Authorization": f"Bearer {self.api_key}"}
-        params = {"count": count, "start": start}
+        # Diigo API v2 uses API key as query parameter (not Authorization header)
+        params = {
+            "key": self.api_key,
+            "user": self.username,
+            "count": count,
+            "start": start,
+        }
 
         try:
-            response = requests.get(url, headers=headers, params=params, timeout=30)
+            response = requests.get(url, params=params, timeout=30)
 
             if response.status_code == 401:
                 raise Exception(
