@@ -170,8 +170,8 @@ class BookmarkService:
             parsed_url = urlparse(url)
             domain = parsed_url.netloc or url
 
-            llm_title = title or f"Bookmark: {domain}"
-            llm_description = description or f"Saved from {url}"
+            llm_title = title or domain
+            llm_description = description or ""  # Empty if not provided
 
         # Format final title/description
         final_title = title
