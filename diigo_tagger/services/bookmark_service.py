@@ -298,13 +298,15 @@ class BookmarkService:
                 }
 
         # Call Diigo API to create/update bookmark
+        # Use merge=False to replace existing bookmark data (not merge with it)
         try:
             diigo_response = self.diigo_client.create_bookmark(
                 url=url,
                 title=final_title or "Untitled",
                 description=final_description or "",
                 tags=final_tags,
-                shared=shared
+                shared=shared,
+                merge=False  # Replace existing bookmark, don't merge
             )
         except Exception as e:
             raise ValueError(f"Failed to create bookmark in Diigo: {e}")
