@@ -363,21 +363,43 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
 
             # Prompt for action
             click.echo("\nHow would you like to proceed?")
-            click.echo("  1. Keep original (no changes)")
-            click.echo("  2. Replace with new")
-            click.echo("  3. Smart merge (combine tags, keep user-provided title/description)")
-            click.echo("  4. Cancel")
+            click.echo("  Quick options:")
+            click.echo("    1. Keep original (ooo)")
+            click.echo("    2. Replace with new (nnn)")
+            click.echo("    3. Smart merge all (sss)")
+            click.echo("    4. Custom (specify per field)")
+            click.echo("    5. Cancel")
 
-            choice = click.prompt("Choose an option", type=click.IntRange(1, 4), default=4)
+            choice = click.prompt("Choose an option", type=click.IntRange(1, 5), default=5)
 
-            if choice == 4:
+            if choice == 5:
                 click.echo("Cancelled")
                 raise click.Abort()
 
-            resolution_map = {1: 'keep', 2: 'replace', 3: 'merge'}
-            resolution = resolution_map[choice]
+            # Map quick options to resolution codes
+            quick_map = {
+                1: 'ooo',  # keep original
+                2: 'nnn',  # replace with new
+                3: 'sss',  # smart merge all
+            }
 
-            # Call service again with resolution
+            if choice in quick_map:
+                resolution_code = quick_map[choice]
+            else:
+                # Custom: prompt for 3-character code
+                click.echo("\nEnter 3-character resolution code:")
+                click.echo("  Position 1 (Title):       n=new, o=original, s=smart")
+                click.echo("  Position 2 (Description): n=new, o=original, s=smart")
+                click.echo("  Position 3 (Tags):        n=new, o=original, s=smart")
+                click.echo("  Example: 'nns' = new title, new description, smart merge tags")
+
+                while True:
+                    resolution_code = click.prompt("Resolution code", type=str, default="ooo").lower()
+                    if len(resolution_code) == 3 and all(c in 'nos' for c in resolution_code):
+                        break
+                    click.echo("Invalid code. Must be 3 characters from [n, o, s]")
+
+            # Call service again with resolution code
             result = service.add_bookmark(
                 url=url,
                 title=title,
@@ -386,7 +408,7 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
                 outline=outline,
                 groups=groups,
                 shared=shared,
-                conflict_resolution=resolution
+                conflict_resolution=resolution_code
             )
 
     # Display results

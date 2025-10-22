@@ -114,14 +114,14 @@ class BookmarkService:
         outline: Optional[str] = None,
         groups: Optional[str] = None,
         shared: bool = True,
-        conflict_resolution: Optional[str] = None  # 'keep', 'replace', 'merge'
+        conflict_resolution: Optional[str] = None  # 3-char code: 'nnn', 'ooo', 'nns', etc.
     ) -> Dict:
         """
-        Add bookmark to Diigo with LLM-powered defaults.
+        Add bookmark to Diigo with LLM-powered defaults and conflict resolution.
 
         If title/description not provided, uses LLM to generate them.
-        If user provides title/description, formats as "User Title (LLM Title)".
-        Checks tag similarity and confirms with user if very close.
+        If bookmark already exists and no conflict_resolution provided, returns
+        conflict info for user to decide.
 
         Args:
             url: Bookmark URL (required)
@@ -131,24 +131,38 @@ class BookmarkService:
             outline: Optional Diigo outliner content
             groups: Optional comma-separated group names
             shared: Whether bookmark is public (default: True)
+            conflict_resolution: Optional 3-character resolution code when conflict exists
+                Position 0 (title):       n=new, o=original, s=smart
+                Position 1 (description): n=new, o=original, s=smart
+                Position 2 (tags):        n=new, o=original, s=smart
+                Examples: 'nns' = new title, new description, smart merge tags
+                          'ooo' = keep all original
+                          'nnn' = replace all with new
 
         Returns:
-            Dict with bookmark details and LLM suggestions:
+            Dict with bookmark details or conflict information:
+
+            If no conflict or conflict resolved:
             {
                 "url": str,
-                "title": str,  # Final title
-                "description": str,  # Final description
-                "tags": List[str],  # Final tags
-                "llm_suggestions": {
-                    "title": str,
-                    "description": str,
-                    "tags": List[str]
-                },
-                "display_id": str  # CRC32 hash for lookups
+                "title": str,
+                "description": str,
+                "tags": List[str],
+                "display_id": str,
+                "llm_suggestions": {...}  # Optional
+            }
+
+            If conflict detected (no resolution provided):
+            {
+                "conflict": True,
+                "url": str,
+                "existing": {"title": str, "description": str, "tags": List[str], "display_id": str},
+                "new": {"title": str, "description": str, "tags": List[str]},
+                "llm_suggestions": {...}
             }
 
         Raises:
-            ValueError: If OpenAI client not configured when LLM features needed
+            ValueError: If Diigo API fails to create/update bookmark
         """
         # Generate LLM suggestions if client available
         llm_title = None
@@ -228,25 +242,60 @@ class BookmarkService:
 
         # Determine final values based on conflict resolution strategy
         if existing_bookmark and conflict_resolution:
-            if conflict_resolution == 'keep':
-                # Keep existing, don't update
+            # Parse 3-character resolution code: position 0=title, 1=description, 2=tags
+            # Each char can be: n=new, o=original, s=smart
+            if len(conflict_resolution) == 3:
+                title_res, desc_res, tags_res = conflict_resolution[0], conflict_resolution[1], conflict_resolution[2]
+            else:
+                # Backward compatibility with old single-word codes
+                if conflict_resolution == 'keep':
+                    title_res, desc_res, tags_res = 'o', 'o', 'o'
+                elif conflict_resolution == 'replace':
+                    title_res, desc_res, tags_res = 'n', 'n', 'n'
+                elif conflict_resolution == 'merge':
+                    title_res, desc_res, tags_res = 's', 's', 's'
+                else:
+                    title_res, desc_res, tags_res = 'o', 'o', 'o'
+
+            existing_tags = [tag.name for tag in existing_bookmark.tags]
+
+            # Resolve title
+            if title_res == 'o':
+                final_title = existing_bookmark.title
+            elif title_res == 'n':
+                final_title = final_title  # Already set
+            elif title_res == 's':
+                # Smart: prefer user-provided, else keep existing
+                final_title = title or existing_bookmark.title
+
+            # Resolve description
+            if desc_res == 'o':
+                final_description = existing_bookmark.description
+            elif desc_res == 'n':
+                final_description = final_description  # Already set
+            elif desc_res == 's':
+                # Smart: prefer user-provided, else keep existing
+                final_description = description or existing_bookmark.description
+
+            # Resolve tags
+            if tags_res == 'o':
+                final_tags = existing_tags
+            elif tags_res == 'n':
+                final_tags = final_tags  # Already set
+            elif tags_res == 's':
+                # Smart: combine tags (unique union)
+                final_tags = list(set(existing_tags + final_tags))
+
+            # Check if keeping everything original
+            if conflict_resolution == 'ooo':
                 return {
                     "url": url,
                     "title": existing_bookmark.title,
                     "description": existing_bookmark.description,
-                    "tags": [tag.name for tag in existing_bookmark.tags],
+                    "tags": existing_tags,
                     "display_id": existing_bookmark.display_id,
                     "action": "kept_original"
                 }
-            elif conflict_resolution == 'merge':
-                # Smart merge: combine tags, prefer new title/description if provided
-                existing_tags = [tag.name for tag in existing_bookmark.tags]
-                final_tags = list(set(existing_tags + final_tags))  # Unique union
-                # Keep existing title/description if new ones are LLM-generated fallbacks
-                if not title:
-                    final_title = existing_bookmark.title
-                if not description:
-                    final_description = existing_bookmark.description
 
         # Call Diigo API to create/update bookmark
         try:
