@@ -241,3 +241,36 @@ class TagReconciliationService:
         # Sort by similarity (highest first) and limit
         similarities.sort(key=lambda x: x[1], reverse=True)
         return [tag for tag, _ in similarities[:limit]]
+
+    def search_tags(
+        self,
+        query: str,
+        semantic: bool = False,
+        threshold: float = 0.8,
+        limit: int = 20
+    ) -> List[Tag]:
+        """
+        Search for tags using either wildcard or semantic similarity.
+
+        Automatically chooses search method based on semantic flag.
+
+        Args:
+            query: Search query
+            semantic: If True, use semantic similarity search; if False, use wildcard (FTS5)
+            threshold: Minimum similarity score for semantic search (0.0-1.0)
+            limit: Maximum number of results to return
+
+        Returns:
+            List of matching Tag objects
+
+        Examples:
+            >>> search_tags("python*", semantic=False)  # Wildcard search
+            [Tag(name='python'), Tag(name='python-web')]
+
+            >>> search_tags("python", semantic=True, threshold=0.8)  # Semantic search
+            [Tag(name='python-programming'), Tag(name='python-dev')]
+        """
+        if semantic:
+            return self.find_similar_tags(query, threshold=threshold, limit=limit)
+        else:
+            return self.wildcard_search(query, limit=limit)
