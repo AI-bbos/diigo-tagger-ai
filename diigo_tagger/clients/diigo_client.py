@@ -1,5 +1,5 @@
-# ABOUTME: Diigo API client for fetching bookmarks
-# ABOUTME: Handles authentication, pagination, and bookmark parsing
+# ABOUTME: External API client for Diigo service
+# ABOUTME: Handles authentication, bookmark fetching, and bookmark creation
 
 import requests
 from dataclasses import dataclass
@@ -147,3 +147,93 @@ class DiigoClient:
 
         except requests.exceptions.RequestException as e:
             raise Exception(f"Network error fetching bookmarks from Diigo: {e}")
+
+    def create_bookmark(
+        self,
+        url: str,
+        title: str,
+        description: str = "",
+        tags: List[str] = None,
+        shared: bool = True,
+        read_later: bool = False
+    ) -> dict:
+        """
+        Create a new bookmark in Diigo.
+
+        Args:
+            url: Bookmark URL (required, 1-250 chars)
+            title: Bookmark title (required, 1-250 chars)
+            description: Bookmark description (optional, 1-250 chars)
+            tags: List of tag strings (optional)
+            shared: Whether bookmark is public (default: True)
+            read_later: Mark as read later (default: False)
+
+        Returns:
+            Dict with bookmark details from Diigo API response
+
+        Raises:
+            ValueError: If url or title are missing/invalid
+            Exception: On API errors (auth failure, network errors, etc.)
+        """
+        if not url or len(url) > 250:
+            raise ValueError("URL is required and must be 1-250 characters")
+
+        if not title or len(title) > 250:
+            raise ValueError("Title is required and must be 1-250 characters")
+
+        endpoint = f"{self.base_url}/bookmarks"
+
+        # Build request data
+        data = {
+            "url": url,
+            "title": title,
+            "shared": "yes" if shared else "no",
+        }
+
+        if description:
+            data["desc"] = description[:250]  # Truncate to 250 chars
+
+        if tags:
+            # Join tags with commas
+            data["tags"] = ",".join(tags)
+
+        if read_later:
+            data["readLater"] = "yes"
+
+        # Add API key as query parameter
+        params = {
+            "key": self.api_key,
+        }
+
+        try:
+            # Use HTTP Basic Authentication
+            from requests.auth import HTTPBasicAuth
+            auth = HTTPBasicAuth(self.username, self.password)
+
+            response = requests.post(
+                endpoint,
+                data=data,
+                params=params,
+                auth=auth,
+                timeout=30
+            )
+
+            if response.status_code == 401:
+                raise Exception(
+                    f"Authentication failed creating bookmark in Diigo. "
+                    f"Check API key: {redact_api_key(self.api_key)} and username: {self.username}"
+                )
+
+            if response.status_code == 429:
+                raise Exception("Rate limit exceeded for Diigo API. Please retry later.")
+
+            if response.status_code not in [200, 201]:
+                raise Exception(
+                    f"Diigo API error creating bookmark: {response.status_code} - {response.text}"
+                )
+
+            # Return the response (Diigo returns the created bookmark details)
+            return response.json() if response.text else {"url": url, "title": title}
+
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Network error creating bookmark in Diigo: {e}")

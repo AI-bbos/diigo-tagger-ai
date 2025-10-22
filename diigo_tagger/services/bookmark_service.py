@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from ..models import Tag, Bookmark
-from ..api.diigo_client import DiigoClient
-from ..api.openai_client import OpenAIClient
+from ..clients.diigo_client import DiigoClient
+from ..clients.openai_client import OpenAIClient
 
 
 class BookmarkService:
@@ -155,16 +155,22 @@ class BookmarkService:
         llm_tags = []
 
         if self.openai_client:
-            # TODO: Fetch URL content for better LLM suggestions
+            # Generate tags from LLM
             llm_tags = self.openai_client.generate_tags(
                 title=title or "",
                 description=description or "",
                 url=url,
                 max_tags=8
             )
-            # TODO: Generate title/description using LLM
-            llm_title = title or "LLM Title Placeholder"
-            llm_description = description or "LLM Description Placeholder"
+
+            # TODO: Fetch URL content and generate title/description using LLM
+            # For now, use URL domain as fallback title
+            from urllib.parse import urlparse
+            parsed_url = urlparse(url)
+            domain = parsed_url.netloc or url
+
+            llm_title = title or f"Bookmark: {domain}"
+            llm_description = description or f"Saved from {url}"
 
         # Format final title/description
         final_title = title
@@ -189,8 +195,17 @@ class BookmarkService:
             # For now, just combine them
             final_tags.extend(llm_tags)
 
-        # TODO: Call Diigo API to create bookmark
-        # bookmark_response = self.diigo_client.create_bookmark(...)
+        # Call Diigo API to create bookmark
+        try:
+            diigo_response = self.diigo_client.create_bookmark(
+                url=url,
+                title=final_title or "Untitled",
+                description=final_description or "",
+                tags=final_tags,
+                shared=shared
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to create bookmark in Diigo: {e}")
 
         # Create bookmark in our database
         display_id = Bookmark.generate_display_id(url)

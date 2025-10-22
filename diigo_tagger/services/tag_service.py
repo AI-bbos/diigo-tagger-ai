@@ -5,7 +5,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from ..models import Tag
-from ..api.openai_client import OpenAIClient
+from ..clients.openai_client import OpenAIClient
 
 
 class TagService:

@@ -10,8 +10,8 @@ from dotenv import load_dotenv
 
 from ..db import init_db, get_session
 from ..models import Tag
-from ..api.diigo_client import DiigoClient
-from ..api.openai_client import OpenAIClient
+from ..clients.diigo_client import DiigoClient
+from ..clients.openai_client import OpenAIClient
 from ..services.tag_reconciliation import TagReconciliationService
 from ..services.bookmark_service import BookmarkService
 from ..services.tag_service import TagService

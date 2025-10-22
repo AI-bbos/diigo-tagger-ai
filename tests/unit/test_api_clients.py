@@ -3,8 +3,8 @@
 
 import pytest
 from unittest.mock import Mock, patch
-from diigo_tagger.api.diigo_client import DiigoClient, DiigoBookmark
-from diigo_tagger.api.openai_client import OpenAIClient
+from diigo_tagger.clients.diigo_client import DiigoClient, DiigoBookmark
+from diigo_tagger.clients.openai_client import OpenAIClient
 
 
 class TestDiigoClient:
