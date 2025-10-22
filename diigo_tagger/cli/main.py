@@ -331,8 +331,71 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
             shared=shared
         )
 
+        # Handle conflict
+        if result.get('conflict'):
+            click.echo("\n⚠ Bookmark already exists!")
+            click.echo(f"  Display ID: {result['existing']['display_id']}")
+
+            # Show differences
+            click.echo("\n📋 Current vs New:")
+            click.echo(f"\n  Title:")
+            click.echo(f"    Current: {result['existing']['title']}")
+            click.echo(f"    New:     {result['new']['title']}")
+
+            if result['existing']['description'] or result['new']['description']:
+                click.echo(f"\n  Description:")
+                click.echo(f"    Current: {result['existing']['description'][:80] if result['existing']['description'] else '(none)'}...")
+                click.echo(f"    New:     {result['new']['description'][:80] if result['new']['description'] else '(none)'}...")
+
+            click.echo(f"\n  Tags:")
+            existing_set = set(result['existing']['tags'])
+            new_set = set(result['new']['tags'])
+            only_existing = existing_set - new_set
+            only_new = new_set - existing_set
+            common = existing_set & new_set
+
+            if common:
+                click.echo(f"    Common: {', '.join(sorted(common))}")
+            if only_existing:
+                click.echo(f"    Only in current: {', '.join(sorted(only_existing))}")
+            if only_new:
+                click.echo(f"    Only in new: {', '.join(sorted(only_new))}")
+
+            # Prompt for action
+            click.echo("\nHow would you like to proceed?")
+            click.echo("  1. Keep original (no changes)")
+            click.echo("  2. Replace with new")
+            click.echo("  3. Smart merge (combine tags, keep user-provided title/description)")
+            click.echo("  4. Cancel")
+
+            choice = click.prompt("Choose an option", type=click.IntRange(1, 4), default=4)
+
+            if choice == 4:
+                click.echo("Cancelled")
+                raise click.Abort()
+
+            resolution_map = {1: 'keep', 2: 'replace', 3: 'merge'}
+            resolution = resolution_map[choice]
+
+            # Call service again with resolution
+            result = service.add_bookmark(
+                url=url,
+                title=title,
+                description=description,
+                tags=tag_list,
+                outline=outline,
+                groups=groups,
+                shared=shared,
+                conflict_resolution=resolution
+            )
+
     # Display results
-    click.echo(f"\n✓ Bookmark added successfully!")
+    action = result.get('action', 'added')
+    if action == 'kept_original':
+        click.echo(f"\n✓ Kept original bookmark")
+    else:
+        click.echo(f"\n✓ Bookmark {action} successfully!")
+
     click.echo(f"  Display ID: {result['display_id']}")
     click.echo(f"  Title: {result['title']}")
     if result.get('description'):

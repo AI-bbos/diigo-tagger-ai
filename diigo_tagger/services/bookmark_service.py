@@ -113,7 +113,8 @@ class BookmarkService:
         tags: Optional[List[str]] = None,
         outline: Optional[str] = None,
         groups: Optional[str] = None,
-        shared: bool = True
+        shared: bool = True,
+        conflict_resolution: Optional[str] = None  # 'keep', 'replace', 'merge'
     ) -> Dict:
         """
         Add bookmark to Diigo with LLM-powered defaults.
@@ -198,6 +199,54 @@ class BookmarkService:
         # Check if bookmark already exists in local DB
         display_id = Bookmark.generate_display_id(url)
         existing_bookmark = self.session.query(Bookmark).filter_by(url=url).first()
+
+        # If bookmark exists and no conflict resolution specified, return conflict info
+        if existing_bookmark and not conflict_resolution:
+            existing_tags = [tag.name for tag in existing_bookmark.tags]
+
+            # Return conflict information for CLI to handle
+            return {
+                "conflict": True,
+                "url": url,
+                "existing": {
+                    "title": existing_bookmark.title,
+                    "description": existing_bookmark.description,
+                    "tags": existing_tags,
+                    "display_id": existing_bookmark.display_id
+                },
+                "new": {
+                    "title": final_title,
+                    "description": final_description,
+                    "tags": final_tags
+                },
+                "llm_suggestions": {
+                    "title": llm_title,
+                    "description": llm_description,
+                    "tags": llm_tags
+                }
+            }
+
+        # Determine final values based on conflict resolution strategy
+        if existing_bookmark and conflict_resolution:
+            if conflict_resolution == 'keep':
+                # Keep existing, don't update
+                return {
+                    "url": url,
+                    "title": existing_bookmark.title,
+                    "description": existing_bookmark.description,
+                    "tags": [tag.name for tag in existing_bookmark.tags],
+                    "display_id": existing_bookmark.display_id,
+                    "action": "kept_original"
+                }
+            elif conflict_resolution == 'merge':
+                # Smart merge: combine tags, prefer new title/description if provided
+                existing_tags = [tag.name for tag in existing_bookmark.tags]
+                final_tags = list(set(existing_tags + final_tags))  # Unique union
+                # Keep existing title/description if new ones are LLM-generated fallbacks
+                if not title:
+                    final_title = existing_bookmark.title
+                if not description:
+                    final_description = existing_bookmark.description
 
         # Call Diigo API to create/update bookmark
         try:
