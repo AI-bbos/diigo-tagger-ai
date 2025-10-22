@@ -470,6 +470,149 @@ Generating tags for: How to Build CLI Tools
 
 ---
 
+### `diigo add`
+
+Add a new bookmark to Diigo with LLM-generated tags and smart conflict resolution.
+
+**Usage**:
+```bash
+diigo add --url URL [options]
+```
+
+**Required Arguments**:
+- `--url URL`: Bookmark URL to add
+
+**Optional Arguments**:
+- `--title TEXT`: Bookmark title (uses domain name if not provided)
+- `--description TEXT`: Bookmark description (empty if not provided)
+- `--tags TAGS`: Comma-separated user tags (supplements LLM-generated tags)
+- `--outline TEXT`: Diigo outliner content
+- `--groups GROUPS`: Comma-separated Diigo group names
+- `--shared/--private`: Make bookmark public (default) or private
+- `--db-path PATH`: Database location (default: platform-specific)
+
+**Requirements**:
+- Environment variables: `DIIGO_API_KEY`, `DIIGO_USERNAME`, `DIIGO_PASSWORD`
+- Environment variable: `OPENAI_API_KEY` (optional, for tag generation)
+
+**Examples**:
+
+```bash
+# Basic usage - LLM generates tags
+diigo add --url https://example.com/article
+
+# With custom title and tags
+diigo add --url https://example.com --title "My Article" --tags "important,research"
+
+# Private bookmark with description
+diigo add --url https://example.com --private --description "Notes here"
+```
+
+**What it does**:
+1. Generates tags using LLM from URL content
+2. Creates bookmark in Diigo with generated/user-provided tags
+3. Saves bookmark to local database with unique display ID (8-char hash)
+4. Detects duplicates and offers conflict resolution
+
+---
+
+#### Conflict Resolution
+
+When adding a bookmark that already exists, the command shows a side-by-side comparison and prompts for resolution.
+
+**Display Format**:
+```
+⚠ Bookmark already exists!
+  Display ID: a3f2b8c1
+
+📋 Current vs New:
+
+  Title:
+    Current: Old Title Here
+    New:     example.com
+
+  Description:
+    Current: Previous description text...
+    New:     (none)...
+
+  Tags:
+    Common: python, cli-tools, development
+    Only in current: tutorial, beginner
+    Only in new: advanced, production
+```
+
+**Resolution Options**:
+
+**Quick Options** (apply same strategy to all fields):
+1. **Keep original (ooo)** - No changes, bookmark stays as-is
+2. **Replace with new (nnn)** - Completely replace all fields
+3. **Smart merge all (sss)** - Intelligent merge of all fields
+4. **Custom** - Specify per-field resolution
+5. **Cancel** - Abort the operation
+
+**Custom Resolution (3-Character Codes)**:
+
+Format: `XYZ` where each character controls one field:
+- **Position 1** (Title): `n`=new, `o`=original, `s`=smart
+- **Position 2** (Description): `n`=new, `o`=original, `s`=smart
+- **Position 3** (Tags): `n`=new, `o`=original, `s`=smart
+
+**Resolution Strategies**:
+- **`n` (new)**: Use the newly generated value, discard existing
+- **`o` (original)**: Keep the existing value, discard new
+- **`s` (smart)**: Intelligent merge
+  - **Title/Description**: Prefer user-provided, else keep existing
+  - **Tags**: Combine both sets (unique union)
+
+**Example Codes**:
+- `nns` - New title, new description, smart merge tags
+- `oso` - Keep current title, smart merge description, keep current tags
+- `nnn` - Replace everything with new values
+- `ooo` - Keep everything as-is (same as option 1)
+
+**Interactive Prompt**:
+```
+How would you like to proceed?
+  Quick options:
+    1. Keep original (ooo)
+    2. Replace with new (nnn)
+    3. Smart merge all (sss)
+    4. Custom (specify per field)
+    5. Cancel
+Choose an option [5]: 4
+
+Enter 3-character resolution code:
+  Position 1 (Title):       n=new, o=original, s=smart
+  Position 2 (Description): n=new, o=original, s=smart
+  Position 3 (Tags):        n=new, o=original, s=smart
+  Example: 'nns' = new title, new description, smart merge tags
+Resolution code [ooo]: nns
+```
+
+**Common Scenarios**:
+
+| Scenario | Code | Result |
+|----------|------|--------|
+| Update tags only | `oos` | Keep title/desc, merge tags |
+| Fresh title, merge tags | `nos` | New title, keep desc, merge tags |
+| Complete replacement | `nnn` | Replace all fields |
+| Keep everything | `ooo` | No changes |
+| Smart merge all | `sss` | Intelligent merge everywhere |
+
+**Expected Output**:
+```
+✓ Bookmark added successfully!
+  Display ID: a3f2b8c1
+  Title: example.com
+  Tags: python, cli-tools, development, tutorial
+
+  LLM Suggestions:
+    Title: example.com
+    Tags: python, cli-tools, development, tutorial
+```
+
+---
+
 ### `diigo list`
 
 List all tags in the database.

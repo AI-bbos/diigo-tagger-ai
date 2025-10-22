@@ -291,11 +291,19 @@ def list(limit: int, source: Optional[str], sort: str, db_path: Optional[str]):
 @handle_cli_errors
 def add(url: str, title: Optional[str], description: Optional[str], tags: Optional[str],
         outline: Optional[str], groups: Optional[str], shared: bool, db_path: Optional[str]):
-    """Add bookmark to Diigo with LLM-powered defaults.
+    """Add bookmark to Diigo with LLM-powered defaults and conflict resolution.
 
-    If title/description not provided, LLM generates them from URL.
-    If provided, format is "User Input (LLM Suggestion)".
-    Tags are checked for similarity and combined smartly.
+    LLM generates tags from URL. If title/description not provided, uses domain as fallback.
+    User-provided tags supplement LLM-generated tags.
+
+    If bookmark already exists, shows side-by-side comparison and prompts for resolution:
+    - Quick options: keep all, replace all, smart merge all
+    - Custom: specify per-field using 3-character code (e.g., 'nns')
+      Position 1 (title): n=new, o=original, s=smart
+      Position 2 (description): n=new, o=original, s=smart
+      Position 3 (tags): n=new, o=original, s=smart
+
+    Smart merge: combines tags from both, prefers user-provided title/description.
     """
     # Get credentials from environment
     diigo_api_key = os.getenv("DIIGO_API_KEY")
