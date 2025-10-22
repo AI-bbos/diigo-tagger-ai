@@ -104,12 +104,87 @@ def init(db_path: Optional[str]):
         raise click.Abort()
 
 
+def _fetch_bookmarks_until_new_tags(client, target_new_tags, session, fetch_all=False):
+    """
+    Fetch bookmarks and process tags until we find target number of new tags.
+
+    Args:
+        client: DiigoClient instance
+        target_new_tags: Number of new unique tags to find (or None for --all)
+        session: Database session
+        fetch_all: If True, fetch all bookmarks regardless of new tag count
+
+    Returns:
+        Tuple of (bookmarks_processed, tags_added, tags_updated)
+    """
+    start = 0
+    batch_size = 100  # API max per request
+
+    bookmarks_processed = 0
+    tags_added = 0
+    tags_updated = 0
+
+    while True:
+        # Fetch next batch
+        batch = client.fetch_bookmarks(count=batch_size, start=start)
+        if not batch:
+            break
+
+        bookmarks_processed += len(batch)
+
+        # Process tags from this batch
+        for bookmark in batch:
+            for tag_name in bookmark.tags:
+                # Normalize tag name
+                tag_name = tag_name.strip().lower()
+                if not tag_name:
+                    continue
+
+                # Get or create tag
+                tag = session.query(Tag).filter_by(name=tag_name).first()
+                if tag:
+                    tag.count += 1
+                    tags_updated += 1
+                else:
+                    tag = Tag(name=tag_name, count=1, source="user")
+                    session.add(tag)
+                    tags_added += 1
+
+        # Commit this batch
+        session.commit()
+
+        # Show progress
+        click.echo(f"  Processed {bookmarks_processed} bookmarks, found {tags_added} new tags, updated {tags_updated} existing tags")
+
+        # Check stopping conditions
+        if not fetch_all and tags_added >= target_new_tags:
+            click.echo(f"✓ Reached target of {target_new_tags} new tags")
+            break
+
+        # If we got less than batch_size, we've reached the end
+        if len(batch) < batch_size:
+            click.echo(f"✓ Reached end of bookmarks")
+            break
+
+        start += batch_size
+
+    return bookmarks_processed, tags_added, tags_updated
+
+
 @cli.command()
-@click.option("--count", default=100, type=click.IntRange(1, 1000), help="Number of bookmarks to fetch (1-1000)")
+@click.option("--all", "fetch_all", is_flag=True, help="Fetch all bookmarks (paginate through entire collection)")
+@click.option("--count", default=500, type=click.IntRange(1, 100000), help="Number of NEW tags to find (default: 500)")
 @click.option("--db-path", type=click.Path(), help="Path to database file")
 @handle_cli_errors
-def sync(count: int, db_path: Optional[str]):
-    """Sync bookmarks from Diigo and update tag database."""
+def sync(fetch_all: bool, count: int, db_path: Optional[str]):
+    """Sync bookmarks from Diigo and update tag database.
+
+    Fetches bookmarks in batches of 100 and extracts tags. Stops when:
+    - --all: All bookmarks have been fetched
+    - --count N: N new/unique tags have been found (default: 500)
+
+    Note: Existing tags get their counts updated but don't count toward --count target.
+    """
     # Get credentials from environment
     api_key = os.getenv("DIIGO_API_KEY")
     username = os.getenv("DIIGO_USERNAME")
@@ -130,34 +205,23 @@ def sync(count: int, db_path: Optional[str]):
     # Initialize Diigo client
     client = DiigoClient(api_key=api_key, username=username, password=password)
 
-    # Fetch bookmarks
-    click.echo(f"Fetching {count} bookmarks from Diigo...")
-    bookmarks = client.fetch_bookmarks(count=count)
-    click.echo(f"✓ Fetched {len(bookmarks)} bookmarks")
-
-    # Update tag database with proper session management
-    tags_added = 0
-    tags_updated = 0
+    # Fetch and process bookmarks
+    if fetch_all:
+        click.echo("Fetching all bookmarks from Diigo (paginating)...")
+        target_msg = "all bookmarks"
+    else:
+        click.echo(f"Fetching bookmarks until {count} new tags found...")
+        target_msg = f"{count} new tags"
 
     with db_session_manager(db_path) as session:
-        for bookmark in bookmarks:
-            for tag_name in bookmark.tags:
-                # Normalize tag name
-                tag_name = tag_name.strip().lower()
-                if not tag_name:
-                    continue
+        bookmarks_processed, tags_added, tags_updated = _fetch_bookmarks_until_new_tags(
+            client, count, session, fetch_all
+        )
 
-                # Get or create tag
-                tag = session.query(Tag).filter_by(name=tag_name).first()
-                if tag:
-                    tag.count += 1
-                    tags_updated += 1
-                else:
-                    tag = Tag(name=tag_name, count=1, source="user")
-                    session.add(tag)
-                    tags_added += 1
-
-    click.echo(f"✓ Added {tags_added} new tags, updated {tags_updated} existing tags")
+    click.echo(f"\n✓ Summary:")
+    click.echo(f"  Bookmarks processed: {bookmarks_processed}")
+    click.echo(f"  New tags added: {tags_added}")
+    click.echo(f"  Existing tags updated: {tags_updated}")
 
 
 @cli.command()
@@ -241,9 +305,10 @@ def generate(title: str, description: str, url: str, max_tags: int):
 @cli.command()
 @click.option("--limit", default=50, type=click.IntRange(1, 10000), help="Maximum number of tags to display (1-10000)")
 @click.option("--source", type=click.Choice(['user', 'master', 'system'], case_sensitive=False), help="Filter by source")
+@click.option("--sort", type=click.Choice(['count', 'name', 'created'], case_sensitive=False), default='count', help="Sort by: count (default), name, or created")
 @click.option("--db-path", type=click.Path(), help="Path to database file")
 @handle_cli_errors
-def list(limit: int, source: Optional[str], db_path: Optional[str]):
+def list(limit: int, source: Optional[str], sort: str, db_path: Optional[str]):
     """List all tags in the database."""
     with db_session_manager(db_path) as session:
         # Build query
@@ -251,8 +316,16 @@ def list(limit: int, source: Optional[str], db_path: Optional[str]):
         if source:
             query = query.filter_by(source=source)
 
-        # Get tags ordered by count
-        tags = query.order_by(Tag.count.desc()).limit(limit).all()
+        # Apply sorting
+        if sort == 'count':
+            query = query.order_by(Tag.count.desc())
+        elif sort == 'name':
+            query = query.order_by(Tag.name.asc())
+        elif sort == 'created':
+            query = query.order_by(Tag.created_at.desc())
+
+        # Get tags with limit
+        tags = query.limit(limit).all()
 
         if not tags:
             click.echo("No tags found")
