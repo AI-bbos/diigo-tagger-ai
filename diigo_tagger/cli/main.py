@@ -377,35 +377,54 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
             click.echo("    3. Smart merge all (sss)")
             click.echo("    4. Custom (specify per field)")
             click.echo("    5. Cancel")
+            click.echo("\n  Or enter a 3-character code directly (e.g., 'nns')")
 
-            choice = click.prompt("Choose an option", type=click.IntRange(1, 5), default=5)
+            while True:
+                choice_str = click.prompt("Choose option (1-5) or code", type=str, default="5")
 
-            if choice == 5:
-                click.echo("Cancelled")
-                raise click.Abort()
+                # Try to parse as integer first
+                try:
+                    choice = int(choice_str)
+                    if choice == 5:
+                        click.echo("Cancelled")
+                        raise click.Abort()
 
-            # Map quick options to resolution codes
-            quick_map = {
-                1: 'ooo',  # keep original
-                2: 'nnn',  # replace with new
-                3: 'sss',  # smart merge all
-            }
+                    # Map quick options to resolution codes
+                    quick_map = {
+                        1: 'ooo',  # keep original
+                        2: 'nnn',  # replace with new
+                        3: 'sss',  # smart merge all
+                    }
 
-            if choice in quick_map:
-                resolution_code = quick_map[choice]
-            else:
-                # Custom: prompt for 3-character code
-                click.echo("\nEnter 3-character resolution code:")
-                click.echo("  Position 1 (Title):       n=new, o=original, s=smart")
-                click.echo("  Position 2 (Description): n=new, o=original, s=smart")
-                click.echo("  Position 3 (Tags):        n=new, o=original, s=smart")
-                click.echo("  Example: 'nns' = new title, new description, smart merge tags")
+                    if choice in quick_map:
+                        resolution_code = quick_map[choice]
+                        break
+                    elif choice == 4:
+                        # Custom: prompt for 3-character code
+                        click.echo("\nEnter 3-character resolution code:")
+                        click.echo("  Position 1 (Title):       n=new, o=original, s=smart")
+                        click.echo("  Position 2 (Description): n=new, o=original, s=smart")
+                        click.echo("  Position 3 (Tags):        n=new, o=original, s=smart")
+                        click.echo("  Example: 'nns' = new title, new description, smart merge tags")
 
-                while True:
-                    resolution_code = click.prompt("Resolution code", type=str, default="ooo").lower()
+                        while True:
+                            resolution_code = click.prompt("Resolution code", type=str, default="ooo").lower()
+                            if len(resolution_code) == 3 and all(c in 'nos' for c in resolution_code):
+                                break
+                            click.echo("Invalid code. Must be 3 characters from [n, o, s]")
+                        break
+                    else:
+                        click.echo("Invalid option. Please enter 1-5 or a 3-character code.")
+                        continue
+
+                except ValueError:
+                    # Not an integer, try as 3-character code
+                    resolution_code = choice_str.lower()
                     if len(resolution_code) == 3 and all(c in 'nos' for c in resolution_code):
                         break
-                    click.echo("Invalid code. Must be 3 characters from [n, o, s]")
+                    else:
+                        click.echo("Invalid input. Enter 1-5 or a 3-character code (n/o/s).")
+                        continue
 
             # Call service again with resolution code
             result = service.add_bookmark(
