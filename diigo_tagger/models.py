@@ -1,13 +1,23 @@
 # ABOUTME: SQLAlchemy ORM models for Diigo Tagger AI database
-# ABOUTME: Defines Tag model with FTS5 support and optional embeddings
+# ABOUTME: Defines Tag and Bookmark models with FTS5 support and optional embeddings
 
-from sqlalchemy import Column, Integer, String, DateTime, LargeBinary, CheckConstraint, Index
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import Column, Integer, String, DateTime, LargeBinary, CheckConstraint, Index, Table, ForeignKey, Text, Boolean
+from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
 from datetime import datetime
 import numpy as np
+import zlib
 
 Base = declarative_base()
+
+# Association table for many-to-many relationship between bookmarks and tags
+bookmark_tags = Table(
+    'bookmark_tags',
+    Base.metadata,
+    Column('bookmark_id', Integer, ForeignKey('bookmarks.id', ondelete='CASCADE'), primary_key=True),
+    Column('tag_id', Integer, ForeignKey('tags.id', ondelete='CASCADE'), primary_key=True),
+    Column('created_at', DateTime, nullable=False, default=func.now())
+)
 
 
 class Tag(Base):
@@ -69,3 +79,66 @@ class Tag(Base):
 
     def __repr__(self):
         return f"<Tag(name='{self.name}', count={self.count}, source='{self.source}')>"
+
+
+class Bookmark(Base):
+    """
+    Bookmark model storing Diigo bookmarks with metadata.
+
+    Stores full bookmark details from Diigo including URL, title, description,
+    and Diigo-specific features like outlines, groups, and sharing status.
+    Uses CRC32 hash of URL for short, human-friendly display IDs.
+    """
+
+    __tablename__ = "bookmarks"
+
+    # Columns
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    display_id = Column(String(8), nullable=False, unique=True, index=True)  # CRC32 hash for easy typing
+    url = Column(Text, nullable=False, unique=True)  # Full URL
+    title = Column(Text, nullable=True)  # Can be LLM-generated or user-provided
+    description = Column(Text, nullable=True)  # Can be LLM-generated or user-provided
+
+    # Diigo-specific fields
+    shared = Column(Boolean, nullable=False, default=True)  # Public/private
+    outline = Column(Text, nullable=True)  # Diigo outliner content
+    groups = Column(Text, nullable=True)  # Comma-separated group names
+
+    # Metadata
+    diigo_created_at = Column(DateTime, nullable=True)  # When created in Diigo
+    diigo_updated_at = Column(DateTime, nullable=True)  # When last updated in Diigo
+    created_at = Column(DateTime, nullable=False, default=func.now())  # When added to our DB
+    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    tags = relationship("Tag", secondary=bookmark_tags, backref="bookmarks")
+
+    # Constraints
+    __table_args__ = (
+        CheckConstraint("length(url) > 0", name="url_not_empty"),
+        Index("idx_bookmarks_display_id", "display_id"),
+        Index("idx_bookmarks_url", "url"),
+        Index("idx_bookmarks_created_at", "created_at"),
+    )
+
+    @staticmethod
+    def generate_display_id(url: str) -> str:
+        """
+        Generate a short, human-friendly display ID from URL using CRC32 hash.
+
+        Uses CRC32 (fast, non-cryptographic hash) and converts to hex.
+        Result is 8 characters, easy to type for CLI lookups.
+
+        Args:
+            url: The bookmark URL
+
+        Returns:
+            8-character hexadecimal string (e.g., "a3f2b8c1")
+        """
+        # CRC32 returns unsigned 32-bit integer
+        crc = zlib.crc32(url.encode('utf-8')) & 0xffffffff
+        # Convert to 8-character hex string (32 bits = 8 hex chars)
+        return f"{crc:08x}"
+
+    def __repr__(self):
+        return f"<Bookmark(display_id='{self.display_id}', url='{self.url[:50]}...', title='{self.title}')>"
