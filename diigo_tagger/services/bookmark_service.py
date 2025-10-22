@@ -195,7 +195,11 @@ class BookmarkService:
             # For now, just combine them
             final_tags.extend(llm_tags)
 
-        # Call Diigo API to create bookmark
+        # Check if bookmark already exists in local DB
+        display_id = Bookmark.generate_display_id(url)
+        existing_bookmark = self.session.query(Bookmark).filter_by(url=url).first()
+
+        # Call Diigo API to create/update bookmark
         try:
             diigo_response = self.diigo_client.create_bookmark(
                 url=url,
@@ -207,18 +211,29 @@ class BookmarkService:
         except Exception as e:
             raise ValueError(f"Failed to create bookmark in Diigo: {e}")
 
-        # Create bookmark in our database
-        display_id = Bookmark.generate_display_id(url)
-        bookmark = Bookmark(
-            display_id=display_id,
-            url=url,
-            title=final_title,
-            description=final_description,
-            shared=shared,
-            outline=outline,
-            groups=groups
-        )
-        self.session.add(bookmark)
+        # Create or update bookmark in our database
+        if existing_bookmark:
+            # Update existing bookmark
+            bookmark = existing_bookmark
+            bookmark.title = final_title
+            bookmark.description = final_description
+            bookmark.shared = shared
+            bookmark.outline = outline
+            bookmark.groups = groups
+            # Clear existing tags and re-add
+            bookmark.tags.clear()
+        else:
+            # Create new bookmark
+            bookmark = Bookmark(
+                display_id=display_id,
+                url=url,
+                title=final_title,
+                description=final_description,
+                shared=shared,
+                outline=outline,
+                groups=groups
+            )
+            self.session.add(bookmark)
 
         # Add tags to bookmark
         for tag_name in final_tags:
