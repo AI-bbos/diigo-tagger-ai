@@ -155,10 +155,11 @@ class DiigoClient:
         description: str = "",
         tags: List[str] = None,
         shared: bool = True,
-        read_later: bool = False
+        read_later: bool = False,
+        merge: bool = False
     ) -> dict:
         """
-        Create a new bookmark in Diigo.
+        Create or update a bookmark in Diigo.
 
         Args:
             url: Bookmark URL (required, 1-250 chars)
@@ -167,6 +168,7 @@ class DiigoClient:
             tags: List of tag strings (optional)
             shared: Whether bookmark is public (default: True)
             read_later: Mark as read later (default: False)
+            merge: If True, merge with existing bookmark; if False, replace (default: False)
 
         Returns:
             Dict with bookmark details from Diigo API response
@@ -199,6 +201,9 @@ class DiigoClient:
 
         if read_later:
             data["readLater"] = "yes"
+
+        # Set merge parameter (no = replace existing, yes = merge with existing)
+        data["merge"] = "yes" if merge else "no"
 
         # Add API key as query parameter
         params = {
