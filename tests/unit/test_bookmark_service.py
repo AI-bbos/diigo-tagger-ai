@@ -1,0 +1,373 @@
+# ABOUTME: Unit tests for bookmark service
+# ABOUTME: Tests sync, add_bookmark with conflict resolution, and lookup operations
+
+import pytest
+from unittest.mock import Mock, MagicMock, patch, call
+from diigo_tagger.services.bookmark_service import BookmarkService
+from diigo_tagger.models import Tag, Bookmark
+from diigo_tagger.clients.diigo_client import DiigoBookmark
+
+
+class TestBookmarkServiceSync:
+    """Test bookmark sync functionality."""
+
+    def test_sync_processes_bookmarks_and_extracts_tags(self):
+        """Should fetch bookmarks and extract tags to database."""
+        # Setup mocks
+        mock_session = Mock()
+        mock_client = Mock()
+
+        # Mock bookmark data
+        mock_client.fetch_bookmarks.return_value = [
+            DiigoBookmark(
+                title="Test",
+                url="https://example.com",
+                description="Desc",
+                tags=["python", "testing"],
+                created_at="2025-01-01"
+            )
+        ]
+
+        # Mock database queries
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+
+        service = BookmarkService(mock_session, mock_client)
+
+        # Execute
+        bookmarks_processed, tags_added, tags_updated = service.sync(
+            target_new_tags=10,
+            fetch_all=False
+        )
+
+        # Verify
+        assert bookmarks_processed == 1
+        assert tags_added == 2
+        assert tags_updated == 0
+        assert mock_session.add.call_count == 2  # Two tags added
+        mock_session.commit.assert_called()
+
+    def test_sync_updates_existing_tags(self):
+        """Should increment count for existing tags."""
+        mock_session = Mock()
+        mock_client = Mock()
+
+        mock_client.fetch_bookmarks.return_value = [
+            DiigoBookmark(
+                title="Test",
+                url="https://example.com",
+                description="Desc",
+                tags=["python"],
+                created_at="2025-01-01"
+            )
+        ]
+
+        # Mock existing tag
+        existing_tag = Tag(name="python", count=5, source="user")
+        mock_session.query.return_value.filter_by.return_value.first.return_value = existing_tag
+
+        service = BookmarkService(mock_session, mock_client)
+
+        bookmarks_processed, tags_added, tags_updated = service.sync(
+            target_new_tags=10,
+            fetch_all=False
+        )
+
+        assert tags_added == 0
+        assert tags_updated == 1
+        assert existing_tag.count == 6
+
+    def test_sync_with_target_new_tags(self):
+        """Should track new tags added during sync."""
+        mock_session = Mock()
+        mock_client = Mock()
+
+        # Return bookmarks with tags
+        mock_client.fetch_bookmarks.return_value = [
+            DiigoBookmark("T1", "https://ex1.com", "", ["tag1", "tag2"], "2025-01-01")
+        ]
+
+        # Mock: tags don't exist yet (all new)
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+
+        service = BookmarkService(mock_session, mock_client)
+
+        bookmarks_processed, tags_added, tags_updated = service.sync(
+            target_new_tags=5,
+            fetch_all=False
+        )
+
+        # Should process at least one batch
+        assert bookmarks_processed > 0
+        # Should add the tags from the bookmarks
+        assert tags_added > 0
+        assert mock_client.fetch_bookmarks.call_count >= 1
+
+    def test_sync_calls_progress_callback(self):
+        """Should call progress callback after each batch."""
+        mock_session = Mock()
+        mock_client = Mock()
+        mock_callback = Mock()
+
+        mock_client.fetch_bookmarks.return_value = [
+            DiigoBookmark("Test", "https://example.com", "", ["python"], "2025-01-01")
+        ]
+
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+
+        service = BookmarkService(mock_session, mock_client)
+
+        service.sync(target_new_tags=1, fetch_all=False, progress_callback=mock_callback)
+
+        mock_callback.assert_called()
+
+
+class TestBookmarkServiceAdd:
+    """Test add_bookmark functionality."""
+
+    def test_add_bookmark_creates_new_bookmark(self):
+        """Should create new bookmark when URL doesn't exist."""
+        mock_session = Mock()
+        mock_diigo_client = Mock()
+        mock_openai_client = Mock()
+
+        # Mock no existing bookmark
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+
+        # Mock LLM tag generation
+        mock_openai_client.generate_tags.return_value = ["python", "tutorial"]
+
+        # Mock Diigo API success
+        mock_diigo_client.create_bookmark.return_value = {"success": True}
+
+        service = BookmarkService(mock_session, mock_diigo_client, mock_openai_client)
+
+        result = service.add_bookmark(
+            url="https://example.com",
+            title="Test Title"
+        )
+
+        assert result["url"] == "https://example.com"
+        assert result["title"] == "Test Title"
+        assert "python" in result["tags"]
+        assert "display_id" in result
+        mock_session.add.assert_called()  # Bookmark added
+        mock_session.commit.assert_called()
+
+    def test_add_bookmark_detects_conflict(self):
+        """Should return conflict info when bookmark exists."""
+        mock_session = Mock()
+        mock_diigo_client = Mock()
+        mock_openai_client = Mock()
+
+        # Mock existing bookmark
+        existing_bookmark = Bookmark(
+            url="https://example.com",
+            title="Old Title",
+            description="Old Desc",
+            display_id="abc12345"
+        )
+        existing_bookmark.tags = [Tag(name="old-tag", count=1, source="user")]
+
+        mock_session.query.return_value.filter_by.return_value.first.return_value = existing_bookmark
+
+        # Mock LLM
+        mock_openai_client.generate_tags.return_value = ["new-tag"]
+
+        service = BookmarkService(mock_session, mock_diigo_client, mock_openai_client)
+
+        result = service.add_bookmark(
+            url="https://example.com",
+            title="New Title"
+        )
+
+        # Should return conflict info
+        assert result["conflict"] == True
+        assert result["existing"]["title"] == "Old Title"
+        assert result["new"]["title"] == "New Title"
+        assert "old-tag" in result["existing"]["tags"]
+        assert "new-tag" in result["new"]["tags"]
+
+    def test_add_bookmark_with_resolution_ooo(self):
+        """Should keep original when resolution is 'ooo'."""
+        mock_session = Mock()
+        mock_diigo_client = Mock()
+
+        existing_bookmark = Bookmark(
+            url="https://example.com",
+            title="Old Title",
+            description="Old Desc",
+            display_id="abc12345"
+        )
+        existing_bookmark.tags = [Tag(name="old-tag", count=1, source="user")]
+
+        mock_session.query.return_value.filter_by.return_value.first.return_value = existing_bookmark
+
+        service = BookmarkService(mock_session, mock_diigo_client)
+
+        result = service.add_bookmark(
+            url="https://example.com",
+            title="New Title",
+            conflict_resolution="ooo"
+        )
+
+        assert result["action"] == "kept_original"
+        assert result["title"] == "Old Title"
+
+    def test_add_bookmark_with_resolution_nnn(self):
+        """Should replace all fields when resolution is 'nnn'."""
+        mock_session = Mock()
+        mock_diigo_client = Mock()
+
+        # Mock existing bookmark - avoid using real Bookmark objects to prevent SQLAlchemy issues
+        existing_bookmark = Mock()
+        existing_bookmark.url = "https://example.com"
+        existing_bookmark.title = "Old Title"
+        existing_bookmark.description = "Old Desc"
+        existing_bookmark.display_id = "abc12345"
+        # Mock the tags as a list
+        old_tag = Mock()
+        old_tag.name = "old-tag"
+        existing_bookmark.tags = [old_tag]
+
+        mock_session.query.return_value.filter_by.return_value.first.return_value = existing_bookmark
+        mock_diigo_client.create_bookmark.return_value = {"success": True}
+
+        service = BookmarkService(mock_session, mock_diigo_client)
+
+        result = service.add_bookmark(
+            url="https://example.com",
+            title="New Title",
+            description="New Desc",
+            tags=["new-tag"],
+            conflict_resolution="nnn"
+        )
+
+        # Diigo should be called with merge=False
+        mock_diigo_client.create_bookmark.assert_called_once()
+        call_kwargs = mock_diigo_client.create_bookmark.call_args[1]
+        assert call_kwargs["merge"] == False
+
+    def test_add_bookmark_with_resolution_nns(self):
+        """Should use custom resolution 'nns' (new title, new desc, smart tags)."""
+        mock_session = Mock()
+        mock_diigo_client = Mock()
+
+        # Mock existing bookmark with tags
+        existing_tag = Tag(name="old-tag", count=1, source="user")
+        existing_bookmark = Bookmark(
+            url="https://example.com",
+            title="Old Title",
+            description="Old Desc",
+            display_id="abc12345"
+        )
+        existing_bookmark.tags = [existing_tag]
+
+        mock_session.query.return_value.filter_by.return_value.first.side_effect = [
+            existing_bookmark,  # First call: check if bookmark exists
+            None,  # Subsequent calls: tags don't exist yet
+            None,
+        ]
+
+        mock_diigo_client.create_bookmark.return_value = {"success": True}
+
+        service = BookmarkService(mock_session, mock_diigo_client)
+
+        result = service.add_bookmark(
+            url="https://example.com",
+            title="New Title",
+            description="New Desc",
+            tags=["new-tag"],
+            conflict_resolution="nns"
+        )
+
+        # Should have both old and new tags (smart merge)
+        assert "new-tag" in result["tags"]
+        # Old tag should be included in smart merge
+        mock_diigo_client.create_bookmark.assert_called_once()
+
+
+class TestBookmarkServiceLookup:
+    """Test bookmark lookup functionality."""
+
+    def test_lookup_by_url_exact_match(self):
+        """Should return exact match when URL exists."""
+        mock_session = Mock()
+        mock_client = Mock()
+
+        bookmark = Bookmark(url="https://example.com", title="Test", display_id="abc123")
+        mock_session.query.return_value.filter_by.return_value.first.return_value = bookmark
+
+        service = BookmarkService(mock_session, mock_client)
+
+        result = service.lookup_by_url("https://example.com")
+
+        assert result["exact_match"] == bookmark
+        assert result["similar_count"] == 0
+
+    def test_lookup_by_url_finds_similar_domain(self):
+        """Should find bookmarks on similar domain when no exact match."""
+        mock_session = Mock()
+        mock_client = Mock()
+
+        # No exact match
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+
+        # Similar bookmarks on same domain
+        similar_bookmark = Bookmark(url="https://example.com/other", title="Similar", display_id="def456")
+        mock_session.query.return_value.filter.return_value.all.return_value = [similar_bookmark]
+
+        service = BookmarkService(mock_session, mock_client)
+
+        result = service.lookup_by_url("https://example.com/new-page", include_similar=True)
+
+        assert result["exact_match"] is None
+        assert result["similar_count"] == 1
+        assert similar_bookmark in result["similar_matches"]
+
+    def test_lookup_by_display_id(self):
+        """Should find bookmark by display ID."""
+        mock_session = Mock()
+        mock_client = Mock()
+
+        bookmark = Bookmark(url="https://example.com", title="Test", display_id="abc12345")
+        mock_session.query.return_value.filter_by.return_value.first.return_value = bookmark
+
+        service = BookmarkService(mock_session, mock_client)
+
+        result = service.lookup_by_display_id("abc12345")
+
+        assert result == bookmark
+
+    def test_lookup_by_identifiers_mixed(self):
+        """Should handle mixed URLs and display IDs."""
+        mock_session = Mock()
+        mock_client = Mock()
+
+        # Mock URL lookup
+        url_bookmark = Bookmark(url="https://example.com", title="URL", display_id="aaa111")
+
+        # Mock display ID lookup
+        id_bookmark = Bookmark(url="https://other.com", title="ID", display_id="bbb222")
+
+        def mock_filter_by(url=None, display_id=None):
+            mock_result = Mock()
+            if url == "https://example.com":
+                mock_result.first.return_value = url_bookmark
+            elif display_id == "bbb222":
+                mock_result.first.return_value = id_bookmark
+            else:
+                mock_result.first.return_value = None
+            return mock_result
+
+        mock_session.query.return_value.filter_by = mock_filter_by
+        mock_session.query.return_value.filter.return_value.all.return_value = []
+
+        service = BookmarkService(mock_session, mock_client)
+
+        results = service.lookup_by_identifiers(["https://example.com", "bbb222"])
+
+        assert len(results) == 2
+        assert results[0]["type"] == "url"
+        assert results[0]["exact_match"] == url_bookmark
+        assert results[1]["type"] == "display_id"
+        assert results[1]["exact_match"] == id_bookmark
