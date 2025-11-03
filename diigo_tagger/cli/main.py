@@ -489,11 +489,6 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
         click.echo(f"  Description: {result['description'][:100]}...")
     click.echo(f"  Tags: {', '.join(result['tags'])}")
 
-    if openai_client and result.get('llm_suggestions'):
-        click.echo(f"\n  LLM Suggestions:")
-        click.echo(f"    Title: {result['llm_suggestions'].get('title')}")
-        click.echo(f"    Tags: {', '.join(result['llm_suggestions'].get('tags', []))}")
-
 
 @cli.command()
 @click.argument("identifiers", nargs=-1, required=False)  # Can be URL or display IDs
