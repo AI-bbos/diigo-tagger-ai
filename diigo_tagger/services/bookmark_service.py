@@ -9,6 +9,7 @@ from sqlalchemy import func
 from ..models import Tag, Bookmark
 from ..clients.diigo_client import DiigoClient
 from ..clients.openai_client import OpenAIClient
+from ..clients.metadata_fetcher import MetadataFetcher
 
 
 class BookmarkService:
@@ -31,6 +32,7 @@ class BookmarkService:
         self.session = session
         self.diigo_client = diigo_client
         self.openai_client = openai_client
+        self.metadata_fetcher = MetadataFetcher()
 
     def sync(
         self,
@@ -164,28 +166,33 @@ class BookmarkService:
         Raises:
             ValueError: If Diigo API fails to create/update bookmark
         """
+        # Fetch webpage/video metadata
+        metadata = self.metadata_fetcher.fetch_metadata(url)
+        fetched_title = metadata.get('title', '')
+        fetched_description = metadata.get('description', '')
+        fetched_keywords = metadata.get('keywords', [])
+
         # Generate LLM suggestions if client available
         llm_title = None
         llm_description = None
         llm_tags = []
 
         if self.openai_client:
-            # Generate tags from LLM
+            # Use fetched metadata if user didn't provide title/description
+            llm_input_title = title or fetched_title or ""
+            llm_input_description = description or fetched_description or ""
+
+            # Generate tags from LLM with full context
             llm_tags = self.openai_client.generate_tags(
-                title=title or "",
-                description=description or "",
+                title=llm_input_title,
+                description=llm_input_description,
                 url=url,
                 max_tags=8
             )
 
-            # TODO: Fetch URL content and generate title/description using LLM
-            # For now, use URL domain as fallback title
-            from urllib.parse import urlparse
-            parsed_url = urlparse(url)
-            domain = parsed_url.netloc or url
-
-            llm_title = title or domain
-            llm_description = description or ""  # Empty if not provided
+            # Use fetched title as fallback if no user title
+            llm_title = title or fetched_title or urlparse(url).netloc
+            llm_description = description or fetched_description
 
         # Format final title/description
         final_title = title
