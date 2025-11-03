@@ -84,7 +84,45 @@ def handle_cli_errors(func):
     return wrapper
 
 
-@click.group()
+class HelpfulGroup(click.Group):
+    """
+    Custom Click Group that shows available commands on error.
+
+    When user provides invalid options at the top level,
+    shows helpful message with available commands instead of
+    just "No such option".
+    """
+
+    def parse_args(self, ctx, args):
+        """Override to provide helpful error messages."""
+        try:
+            return super().parse_args(ctx, args)
+        except click.exceptions.NoSuchOption as e:
+            # User provided an option that doesn't exist at this level
+            click.echo(f"Error: {e.message}\n", err=True)
+
+            # Suggest likely command based on the option
+            option_name = e.option_name
+            suggestion = None
+            if option_name == '--url':
+                suggestion = "add"
+            elif option_name in ['--query', '--pattern']:
+                suggestion = "search"
+            elif option_name in ['--limit', '--sort']:
+                suggestion = "list"
+
+            if suggestion:
+                click.echo(f"Did you mean: diigo {suggestion} {option_name} ...\n", err=True)
+
+            click.echo("Available commands:", err=True)
+            formatter = ctx.make_formatter()
+            self.format_commands(ctx, formatter)
+            click.echo(formatter.getvalue(), err=True)
+            click.echo("\nFor command-specific options, try: diigo <command> --help", err=True)
+            ctx.exit(2)
+
+
+@click.group(cls=HelpfulGroup)
 def cli():
     """Diigo Tagger AI - AI-powered bookmark tagging tool."""
     pass
