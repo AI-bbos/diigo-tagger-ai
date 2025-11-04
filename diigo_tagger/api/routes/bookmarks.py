@@ -1,15 +1,14 @@
 # ABOUTME: Bookmark API endpoints for listing and searching
-# ABOUTME: Supports Lucene query syntax via luqum, pagination, and sorting
+# ABOUTME: Thin layer that calls bookmark service for business logic
 
 import logging
-import math
 from typing import Optional
 
 from fastapi import APIRouter, Query, HTTPException
-from sqlalchemy import desc, or_
 
 from ...db import get_session
-from ...models import Bookmark as BookmarkModel, Tag as TagModel
+from ...models import Bookmark as BookmarkModel
+from ...services.bookmark_service import BookmarkService
 from ..schemas.bookmark import BookmarkResponse, BookmarkListResponse, PaginationInfo
 
 logger = logging.getLogger(__name__)
@@ -42,59 +41,39 @@ async def list_bookmarks(
     session = get_session()
 
     try:
-        # Build query
-        query = session.query(BookmarkModel)
+        # Create service (no Diigo client needed for search)
+        service = BookmarkService(session=session)
 
-        # TODO: Phase 1.2 - Add luqum query parsing
-        # For now, just list all bookmarks
-        if q:
-            logger.warning(f"Query parsing not yet implemented: {q}")
+        # Call service layer
+        try:
+            result = service.search_bookmarks(
+                query=q,
+                page=page,
+                limit=limit,
+                sort=sort
+            )
+        except ValueError as e:
+            # Invalid query syntax
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "detail": str(e),
+                    "error_code": "INVALID_QUERY_SYNTAX",
+                    "query": q
+                }
+            )
 
-        # Apply sorting
-        if sort == "created_asc":
-            query = query.order_by(BookmarkModel.created_at.asc())
-        elif sort == "title_asc":
-            query = query.order_by(BookmarkModel.title.asc())
-        else:  # default: created_desc
-            query = query.order_by(BookmarkModel.created_at.desc())
+        # Convert service result to API response
+        bookmark_responses = [
+            BookmarkResponse(**bm) for bm in result["bookmarks"]
+        ]
 
-        # Count total for pagination
-        total_items = query.count()
-        total_pages = math.ceil(total_items / limit) if total_items > 0 else 0
-
-        # Apply pagination
-        offset = (page - 1) * limit
-        bookmarks = query.offset(offset).limit(limit).all()
-
-        # Convert to response format
-        bookmark_responses = []
-        for bm in bookmarks:
-            tags = [tag.name for tag in bm.tags]
-            bookmark_responses.append(BookmarkResponse(
-                id=bm.id,
-                display_id=bm.display_id,
-                url=bm.url,
-                title=bm.title,
-                description=bm.description,
-                tags=tags,
-                created_at=bm.created_at,
-                updated_at=bm.updated_at
-            ))
-
-        # Build pagination info
-        pagination = PaginationInfo(
-            page=page,
-            limit=limit,
-            total_items=total_items,
-            total_pages=total_pages,
-            has_next=page < total_pages,
-            has_prev=page > 1
-        )
+        pagination = PaginationInfo(**result["pagination"])
 
         return BookmarkListResponse(
             bookmarks=bookmark_responses,
             pagination=pagination,
-            query=q
+            query=result["query"]
         )
 
     finally:

@@ -1,8 +1,9 @@
 # ABOUTME: Bookmark service for Diigo bookmark operations
-# ABOUTME: Handles sync, add, lookup with LLM-powered defaults and domain matching
+# ABOUTME: Handles sync, add, lookup, search with LLM-powered defaults and domain matching
 
 from typing import List, Dict, Optional, Tuple, Callable
 from urllib.parse import urlparse
+import math
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -10,6 +11,7 @@ from ..models import Tag, Bookmark
 from ..clients.diigo_client import DiigoClient
 from ..clients.openai_client import OpenAIClient
 from ..clients.metadata_fetcher import MetadataFetcher
+from .query_parser import LuceneQueryParser
 
 
 class BookmarkService:
@@ -20,19 +22,25 @@ class BookmarkService:
     and looking up bookmarks with smart domain/path matching.
     """
 
-    def __init__(self, session: Session, diigo_client: DiigoClient, openai_client: Optional[OpenAIClient] = None):
+    def __init__(
+        self,
+        session: Session,
+        diigo_client: Optional[DiigoClient] = None,
+        openai_client: Optional[OpenAIClient] = None
+    ):
         """
         Initialize bookmark service.
 
         Args:
             session: SQLAlchemy session for database operations
-            diigo_client: Diigo API client for bookmark operations
+            diigo_client: Optional Diigo API client (required for sync/add operations)
             openai_client: Optional OpenAI client for LLM-powered features
         """
         self.session = session
         self.diigo_client = diigo_client
         self.openai_client = openai_client
         self.metadata_fetcher = MetadataFetcher()
+        self.query_parser = LuceneQueryParser()
 
     def sync(
         self,
@@ -539,3 +547,102 @@ class BookmarkService:
                 })
 
         return results
+
+    def search_bookmarks(
+        self,
+        query: Optional[str] = None,
+        page: int = 1,
+        limit: int = 50,
+        sort: str = "created_desc"
+    ) -> Dict:
+        """
+        Search bookmarks with optional Lucene query syntax.
+
+        Args:
+            query: Optional Lucene query string (e.g., "title:python AND tags:tutorial")
+            page: Page number (1-indexed)
+            limit: Items per page (max 100)
+            sort: Sort order - "created_desc", "created_asc", or "title_asc"
+
+        Returns:
+            Dictionary with:
+            {
+                "bookmarks": [
+                    {
+                        "id": int,
+                        "display_id": str,
+                        "url": str,
+                        "title": str,
+                        "description": str,
+                        "tags": [str],
+                        "created_at": datetime,
+                        "updated_at": datetime
+                    },
+                    ...
+                ],
+                "pagination": {
+                    "page": int,
+                    "limit": int,
+                    "total_items": int,
+                    "total_pages": int,
+                    "has_next": bool,
+                    "has_prev": bool
+                },
+                "query": str (the query that was executed)
+            }
+
+        Raises:
+            ValueError: If query has invalid syntax or unsupported fields
+        """
+        # Start with base query
+        db_query = self.session.query(Bookmark)
+
+        # Apply Lucene query filter if provided
+        if query:
+            filter_expr = self.query_parser.parse(query)
+            if filter_expr is not None:
+                db_query = db_query.filter(filter_expr)
+
+        # Apply sorting
+        if sort == "created_asc":
+            db_query = db_query.order_by(Bookmark.created_at.asc())
+        elif sort == "title_asc":
+            db_query = db_query.order_by(Bookmark.title.asc())
+        else:  # default: created_desc
+            db_query = db_query.order_by(Bookmark.created_at.desc())
+
+        # Count total for pagination
+        total_items = db_query.count()
+        total_pages = math.ceil(total_items / limit) if total_items > 0 else 0
+
+        # Apply pagination
+        offset = (page - 1) * limit
+        bookmarks = db_query.offset(offset).limit(limit).all()
+
+        # Convert to dictionaries
+        bookmark_dicts = []
+        for bm in bookmarks:
+            tags = [tag.name for tag in bm.tags]
+            bookmark_dicts.append({
+                "id": bm.id,
+                "display_id": bm.display_id,
+                "url": bm.url,
+                "title": bm.title,
+                "description": bm.description,
+                "tags": tags,
+                "created_at": bm.created_at,
+                "updated_at": bm.updated_at
+            })
+
+        return {
+            "bookmarks": bookmark_dicts,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_items": total_items,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            },
+            "query": query
+        }
