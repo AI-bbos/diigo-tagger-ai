@@ -142,16 +142,69 @@ GET /api/health
 #### List Bookmarks (Paginated)
 
 ```http
-GET /api/bookmarks?page=1&limit=50&q=search&field=title&tag=python&sort=created_desc
+GET /api/bookmarks?page=1&limit=50&q=title:*neural* AND tags:(python OR tutorial)&sort=created_desc
 ```
 
 **Query Parameters:**
 - `page` (int, default=1): Page number
 - `limit` (int, default=50, max=100): Items per page
-- `q` (string, optional): Search query
-- `field` (enum: all|title|description|url|tags, default=all): Search field
-- `tag` (string, optional): Filter by tag (can be multiple: `tag=python&tag=tutorial`)
+- `q` (string, optional): **Lucene query syntax** (see Query Language section below)
 - `sort` (enum: created_desc|created_asc|title_asc, default=created_desc): Sort order
+
+**Query Language (Lucene Syntax):**
+
+Powered by **luqum** library for full Lucene query support.
+
+**Basic Syntax:**
+```
+field:value              # Field match (substring)
+field:*value*            # Explicit wildcard
+field:"exact phrase"     # Exact phrase match
+term                     # Search all fields for term
+term1 AND term2          # Boolean AND
+term1 OR term2           # Boolean OR
+-field:value             # Negation (NOT)
+NOT field:value          # Negation (explicit)
+(grouped) AND queries    # Grouping with parentheses
+```
+
+**Examples:**
+```
+# Simple field search
+title:neural
+description:swimming
+url:youtube.com
+
+# Tag filtering (single)
+tags:python
+
+# Tag filtering (multiple - AND)
+tags:python AND tags:tutorial
+
+# Tag filtering (multiple - OR)
+tags:(python OR javascript)
+
+# Combined filters
+title:*neural* AND tags:python
+title:*neural* OR title:*network*
+
+# Negation
+tags:python -tags:beginner
+tags:python NOT tags:beginner
+
+# Complex queries
+(title:neural OR title:network) AND tags:(python OR ai) -tags:beginner
+
+# Search all fields (no field specified)
+machine learning          # Finds "machine" AND "learning" in any field
+"machine learning"        # Finds exact phrase in any field
+```
+
+**Supported Fields:**
+- `title`: Bookmark title
+- `description`: Bookmark description
+- `url`: Bookmark URL
+- `tags`: Tag names (exact match)
 
 **Response 200:**
 ```json

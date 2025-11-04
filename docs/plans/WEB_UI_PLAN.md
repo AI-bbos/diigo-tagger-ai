@@ -196,7 +196,7 @@ diigo_tagger/
 **Goal:** Set up FastAPI, LangChain, infrastructure
 
 **Tasks:**
-1. Add dependencies (FastAPI, Uvicorn, Jinja2, HTMX, Tailwind, LangChain)
+1. Add dependencies (FastAPI, Uvicorn, Jinja2, HTMX, Tailwind, LangChain, luqum)
 2. Create `LLMRouter` with multi-provider support
 3. Refactor `OpenAIClient` → use `LLMRouter`
 4. Update CLI to use new `LLMRouter` (verify no breakage)
@@ -220,28 +220,37 @@ diigo_tagger/
 
 **API Routes:**
 ```python
-GET  /api/bookmarks?q=<query>&tag=<tag>&field=<field>&page=<n>
+GET  /api/bookmarks?q=<lucene_query>&page=<n>&limit=<n>&sort=<order>
 GET  /api/bookmarks/{display_id}
 ```
 
 **UI Pages:**
 - Homepage: bookmark list (paginated, 50/page)
-- Search bar with field selector
-- Tag filter chips
+- Search bar with Lucene query support
+- Query builder UI (simple mode for beginners)
+- Tag filter chips (clicks generate query)
 - Bookmark cards (title, URL, tags, display_id)
 
 **Features:**
-- Field-specific search: `field:title|description|url|tags`
-- Tag expressions: `tag:woodworking AND tag:tutorial`
+- **Lucene query language** (powered by luqum library)
+  - Field-specific: `title:neural`, `tags:python`
+  - Boolean operators: `AND`, `OR`, `NOT`, `-`
+  - Wildcards: `title:*neural*`
+  - Phrases: `"machine learning"`
+  - Grouping: `(title:neural OR title:network) AND tags:python`
+- **Dual UI modes:**
+  - Simple mode: Form fields that build query automatically
+  - Advanced mode: Direct Lucene query input
 - Pagination
-- Click tag → filter by that tag
+- Click tag → adds to query (e.g., `tags:python`)
 
 **TDD:**
-- Test bookmark list API (pagination, search, filters)
-- Test search parser (tag expressions)
+- Test bookmark list API (pagination, Lucene queries)
+- Test luqum query parsing and SQLAlchemy conversion
+- Test query builder UI (form → query string)
 - Test UI renders correctly with HTMX
 
-**Deliverable:** Functional bookmark browser with search
+**Deliverable:** Functional bookmark browser with powerful search
 
 ---
 
@@ -550,6 +559,9 @@ fastapi = "^0.104"
 uvicorn = {extras = ["standard"], version = "^0.24"}
 jinja2 = "^3.1"
 python-multipart = "^0.0.6"  # for form data
+
+# Query parsing
+luqum = "^0.13"  # Lucene query parser for search
 
 # LLM routing
 langchain = "^0.1"  # already have
