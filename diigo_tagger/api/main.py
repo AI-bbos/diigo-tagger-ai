@@ -16,7 +16,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-from .routes import health
+from .routes import health, bookmarks
 
 logger = logging.getLogger(__name__)
 
@@ -165,9 +165,9 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Include routers
 app.include_router(health.router, prefix="/api", tags=["health"])
+app.include_router(bookmarks.router, prefix="/api/v1", tags=["bookmarks"])
 
 # TODO: Add additional routers in future phases
-# app.include_router(bookmarks.router, prefix="/api/v1", tags=["bookmarks"])
 # app.include_router(tags.router, prefix="/api/v1", tags=["tags"])
 # app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"])
 
