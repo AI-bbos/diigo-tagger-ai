@@ -276,3 +276,27 @@ class TestMiddlewareStack:
         assert response.status_code == 200
         assert "access-control-allow-origin" in response.headers
         assert response.headers["X-Frame-Options"] == "DENY"
+
+
+class TestWebUI:
+    """Test web UI template rendering."""
+
+    def test_homepage_renders(self, client):
+        """Should render homepage with base template."""
+        response = client.get("/")
+
+        assert response.status_code == 200
+        assert b"Diigo Tagger" in response.content
+        assert b"Your Bookmarks" in response.content
+        # Verify HTMX is loaded
+        assert b"htmx.org" in response.content
+        # Verify Tailwind is loaded
+        assert b"tailwindcss.com" in response.content
+
+    def test_homepage_has_security_headers(self, client):
+        """Should have security headers on HTML pages too."""
+        response = client.get("/")
+
+        assert response.status_code == 200
+        assert "X-Request-ID" in response.headers
+        assert response.headers["X-Frame-Options"] == "DENY"

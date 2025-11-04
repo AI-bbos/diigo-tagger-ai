@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Diigo Tagger{% endblock %}</title>
+
+    <!-- Tailwind CSS (CDN for development) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- HTMX (CDN) -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <!-- Custom styles -->
+    <style>
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex">
+                    <!-- Logo/Brand -->
+                    <div class="flex-shrink-0 flex items-center">
+                        <h1 class="text-xl font-bold text-gray-900">
+                            Diigo Tagger
+                        </h1>
+                    </div>
+
+                    <!-- Navigation Links -->
+                    <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+                        <a href="/" class="border-indigo-500 text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Bookmarks
+                        </a>
+                        <a href="/tags" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Tags
+                        </a>
+                        <a href="/add" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Add Bookmark
+                        </a>
+                        <a href="/graph" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Interest Graph
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Health Status Indicator -->
+                <div class="flex items-center">
+                    <div id="health-status"
+                         hx-get="/api/health"
+                         hx-trigger="load, every 30s"
+                         hx-swap="innerHTML">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            Checking...
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <!-- Flash Messages -->
+        {% if messages %}
+        <div class="mb-4">
+            {% for message in messages %}
+            <div class="rounded-md bg-{{ message.type }}-50 p-4 mb-2">
+                <div class="flex">
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-{{ message.type }}-800">
+                            {{ message.text }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Page Content -->
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 mt-12">
+        <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            <p class="text-center text-sm text-gray-500">
+                Diigo Tagger - AI-Powered Bookmark Management
+            </p>
+        </div>
+    </footer>
+
+    <!-- HTMX Config -->
+    <script>
+        // Configure HTMX
+        document.body.addEventListener('htmx:configRequest', (event) => {
+            // Add request ID to all HTMX requests
+            event.detail.headers['X-Request-ID'] = crypto.randomUUID();
+        });
+
+        // Handle health status updates
+        document.body.addEventListener('htmx:afterSwap', (event) => {
+            if (event.detail.target.id === 'health-status') {
+                try {
+                    const data = JSON.parse(event.detail.xhr.response);
+                    const status = data.status;
+                    const statusClass = status === 'healthy' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800';
+                    event.detail.target.innerHTML = `
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusClass}">
+                            ${status === 'healthy' ? '✓' : '⚠'} ${status}
+                        </span>
+                    `;
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            }
+        });
+    </script>
+
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

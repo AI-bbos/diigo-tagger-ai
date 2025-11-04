@@ -4,12 +4,13 @@
 import uuid
 import logging
 from typing import Optional
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -171,11 +172,29 @@ app.include_router(health.router, prefix="/api", tags=["health"])
 # app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"])
 
 
-# Mount static files (future)
-# app.mount("/static", StaticFiles(directory="web/static"), name="static")
+# Mount static files
+static_dir = Path(__file__).parent.parent / "web" / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-# Templates (future)
-# templates = Jinja2Templates(directory="web/templates")
+# Templates
+templates_dir = Path(__file__).parent.parent / "web" / "templates"
+templates = Jinja2Templates(directory=str(templates_dir))
+
+
+# Web UI routes (placeholder for Phase 1+)
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request):
+    """
+    Homepage - bookmark list.
+
+    Phase 0: Basic template
+    Phase 1: Will add search and bookmark display
+    """
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request}
+    )
 
 
 logger.info("FastAPI application initialized")
