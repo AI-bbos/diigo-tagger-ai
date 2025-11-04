@@ -23,9 +23,9 @@ class TestDiigoClient:
     def test_initialization_validates_https(self):
         """Should validate that base URL uses HTTPS."""
         with pytest.raises(ValueError, match="HTTPS"):
-            DiigoClient(api_key="test-key", username="testuser", base_url="http://insecure.com")
+            DiigoClient(api_key="test-key", username="testuser", password="test-pass", base_url="http://insecure.com")
 
-    @patch("diigo_tagger.api.diigo_client.requests.get")
+    @patch("diigo_tagger.clients.diigo_client.requests.get")
     def test_fetch_bookmarks_success(self, mock_get):
         """Should fetch and parse bookmarks successfully."""
         mock_response = Mock()
@@ -41,7 +41,7 @@ class TestDiigoClient:
         ]
         mock_get.return_value = mock_response
 
-        client = DiigoClient(api_key="test-key", username="testuser")
+        client = DiigoClient(api_key="test-key", username="testuser", password="test-pass")
         bookmarks = client.fetch_bookmarks(count=10)
 
         assert len(bookmarks) == 1
@@ -49,7 +49,7 @@ class TestDiigoClient:
         assert bookmarks[0].title == "Python Tutorial"
         assert bookmarks[0].tags == ["python", "programming"]
 
-    @patch("diigo_tagger.api.diigo_client.requests.get")
+    @patch("diigo_tagger.clients.diigo_client.requests.get")
     def test_fetch_bookmarks_handles_empty_tags(self, mock_get):
         """Should handle bookmarks with no tags."""
         mock_response = Mock()
@@ -65,12 +65,12 @@ class TestDiigoClient:
         ]
         mock_get.return_value = mock_response
 
-        client = DiigoClient(api_key="test-key", username="testuser")
+        client = DiigoClient(api_key="test-key", username="testuser", password="test-pass")
         bookmarks = client.fetch_bookmarks()
 
         assert bookmarks[0].tags == []
 
-    @patch("diigo_tagger.api.diigo_client.requests.get")
+    @patch("diigo_tagger.clients.diigo_client.requests.get")
     def test_fetch_bookmarks_rate_limit_error(self, mock_get):
         """Should raise error on rate limit (429)."""
         mock_response = Mock()
@@ -78,11 +78,11 @@ class TestDiigoClient:
         mock_response.text = "Rate limit exceeded"
         mock_get.return_value = mock_response
 
-        client = DiigoClient(api_key="test-key", username="testuser")
+        client = DiigoClient(api_key="test-key", username="testuser", password="test-pass")
         with pytest.raises(Exception, match="Rate limit"):
             client.fetch_bookmarks()
 
-    @patch("diigo_tagger.api.diigo_client.requests.get")
+    @patch("diigo_tagger.clients.diigo_client.requests.get")
     def test_fetch_bookmarks_auth_error(self, mock_get):
         """Should raise error on authentication failure (401)."""
         mock_response = Mock()
@@ -94,7 +94,7 @@ class TestDiigoClient:
         with pytest.raises(Exception, match="Authentication failed"):
             client.fetch_bookmarks()
 
-    @patch("diigo_tagger.api.diigo_client.requests.get")
+    @patch("diigo_tagger.clients.diigo_client.requests.get")
     def test_fetch_bookmarks_uses_pagination(self, mock_get):
         """Should send correct pagination parameters."""
         mock_response = Mock()
@@ -102,7 +102,7 @@ class TestDiigoClient:
         mock_response.json.return_value = []
         mock_get.return_value = mock_response
 
-        client = DiigoClient(api_key="test-key", username="testuser")
+        client = DiigoClient(api_key="test-key", username="testuser", password="test-pass")
         client.fetch_bookmarks(count=50, start=10)
 
         # Verify request was made with correct params
@@ -122,7 +122,7 @@ class TestOpenAIClient:
         with pytest.raises(ValueError, match="API key"):
             OpenAIClient(api_key=None)
 
-    @patch("diigo_tagger.api.openai_client.OpenAI")
+    @patch("diigo_tagger.clients.openai_client.OpenAI")
     def test_generate_tags_success(self, mock_openai_class):
         """Should generate tags from bookmark content."""
         # Mock OpenAI client response
@@ -144,7 +144,7 @@ class TestOpenAIClient:
         assert "python" in tags
         assert "web-scraping" in tags
 
-    @patch("diigo_tagger.api.openai_client.OpenAI")
+    @patch("diigo_tagger.clients.openai_client.OpenAI")
     def test_generate_tags_handles_malformed_response(self, mock_openai_class):
         """Should handle malformed LLM responses gracefully."""
         mock_client = Mock()
@@ -163,7 +163,7 @@ class TestOpenAIClient:
         # Should still extract something reasonable
         assert isinstance(tags, list)
 
-    @patch("diigo_tagger.api.openai_client.OpenAI")
+    @patch("diigo_tagger.clients.openai_client.OpenAI")
     def test_generate_tags_detects_prompt_injection(self, mock_openai_class):
         """Should detect and reject prompt injection attempts."""
         mock_client = Mock()
@@ -179,7 +179,7 @@ class TestOpenAIClient:
                 url="https://example.com",
             )
 
-    @patch("diigo_tagger.api.openai_client.OpenAI")
+    @patch("diigo_tagger.clients.openai_client.OpenAI")
     def test_generate_tags_rate_limit_handling(self, mock_openai_class):
         """Should handle rate limit errors from OpenAI."""
         mock_client = Mock()
@@ -192,7 +192,7 @@ class TestOpenAIClient:
                 title="Test", description="Test", url="https://example.com"
             )
 
-    @patch("diigo_tagger.api.openai_client.OpenAI")
+    @patch("diigo_tagger.clients.openai_client.OpenAI")
     def test_generate_tags_uses_correct_model(self, mock_openai_class):
         """Should use gpt-4o-mini model as specified."""
         mock_client = Mock()
