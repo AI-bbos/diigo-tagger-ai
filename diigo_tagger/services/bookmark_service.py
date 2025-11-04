@@ -166,7 +166,23 @@ class BookmarkService:
         Raises:
             ValueError: If Diigo API fails to create/update bookmark
         """
-        # Fetch webpage/video metadata
+        # Check if bookmark already exists FIRST (before expensive LLM calls)
+        display_id = Bookmark.generate_display_id(url)
+        existing_bookmark = self.session.query(Bookmark).filter_by(url=url).first()
+
+        # If bookmark exists and user didn't provide any overrides, no changes needed
+        if existing_bookmark and not (title or description or tags) and not conflict_resolution:
+            existing_tags = [tag.name for tag in existing_bookmark.tags]
+            return {
+                "no_changes": True,
+                "url": url,
+                "title": existing_bookmark.title,
+                "description": existing_bookmark.description,
+                "tags": existing_tags,
+                "display_id": existing_bookmark.display_id
+            }
+
+        # Fetch webpage/video metadata (only if needed)
         metadata = self.metadata_fetcher.fetch_metadata(url)
         fetched_title = metadata.get('title', '')
         fetched_description = metadata.get('description', '')
@@ -216,10 +232,6 @@ class BookmarkService:
             # TODO: Check similarity between user tags and LLM tags
             # For now, just combine them
             final_tags.extend(llm_tags)
-
-        # Check if bookmark already exists in local DB
-        display_id = Bookmark.generate_display_id(url)
-        existing_bookmark = self.session.query(Bookmark).filter_by(url=url).first()
 
         # If bookmark exists and no conflict resolution specified, return conflict info
         if existing_bookmark and not conflict_resolution:

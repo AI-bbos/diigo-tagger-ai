@@ -377,21 +377,38 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
             shared=shared
         )
 
-        # Handle conflict
+        # Handle no changes (bookmark exists, no args passed)
+        if result.get('no_changes'):
+            click.echo("\n✓ Bookmark already exists (no changes)")
+            click.echo(f"  Display ID: {result['display_id']}")
+            click.echo(f"  Title: {result['title']}")
+            if result.get('description'):
+                click.echo(f"  Description: {result['description'][:100]}...")
+            click.echo(f"  Tags: {', '.join(result['tags'])}")
+            click.echo("\n💡 Tip: To update, use --title, --description, or --tags")
+            return
+
+        # Handle conflict (bookmark exists, args passed with differences)
         if result.get('conflict'):
             click.echo("\n⚠ Bookmark already exists!")
             click.echo(f"  Display ID: {result['existing']['display_id']}")
 
             # Show differences
             click.echo("\n📋 Current vs New:")
-            click.echo(f"\n  Title:")
-            click.echo(f"    Current: {result['existing']['title']}")
-            click.echo(f"    New:     {result['new']['title']}")
 
-            if result['existing']['description'] or result['new']['description']:
+            # Only show title if different
+            if result['existing']['title'] != result['new']['title']:
+                click.echo(f"\n  Title:")
+                click.echo(f"    Current: {result['existing']['title']}")
+                click.echo(f"    New:     {result['new']['title']}")
+
+            # Only show description if different
+            existing_desc = result['existing']['description']
+            new_desc = result['new']['description']
+            if existing_desc != new_desc:
                 click.echo(f"\n  Description:")
-                click.echo(f"    Current: {result['existing']['description'][:80] if result['existing']['description'] else '(none)'}...")
-                click.echo(f"    New:     {result['new']['description'][:80] if result['new']['description'] else '(none)'}...")
+                click.echo(f"    Current: {existing_desc[:80] if existing_desc else '(none)'}...")
+                click.echo(f"    New:     {new_desc[:80] if new_desc else '(none)'}...")
 
             click.echo(f"\n  Tags:")
             existing_set = set(result['existing']['tags'])
