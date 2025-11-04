@@ -202,22 +202,20 @@ class TestMetadataFetcher:
 
     def test_fetch_metadata_handles_missing_yt_dlp(self):
         """Should handle missing yt-dlp gracefully."""
-        with patch("diigo_tagger.clients.metadata_fetcher.yt_dlp", None):
-            # This would normally fail import, but we can test the error path
-            # by mocking the import to raise ImportError
-            with patch.dict('sys.modules', {'yt_dlp': None}):
-                fetcher = MetadataFetcher()
-                # The _fetch_youtube_metadata method has try/except for ImportError
-                result = fetcher._fetch_youtube_metadata("https://youtube.com/test")
+        with patch("diigo_tagger.clients.metadata_fetcher.YT_DLP_AVAILABLE", False):
+            fetcher = MetadataFetcher()
+            result = fetcher._fetch_youtube_metadata("https://youtube.com/test")
 
-                assert "error" in result
-                assert result["content_type"] == "youtube"
+            assert "error" in result
+            assert result["content_type"] == "youtube"
+            assert "yt-dlp not installed" in result["error"]
 
     def test_fetch_metadata_handles_missing_requests(self):
         """Should handle missing requests library gracefully."""
-        with patch.dict('sys.modules', {'requests': None}):
+        with patch("diigo_tagger.clients.metadata_fetcher.WEB_SCRAPING_AVAILABLE", False):
             fetcher = MetadataFetcher()
             result = fetcher._fetch_webpage_metadata("https://example.com")
 
             assert "error" in result
             assert result["content_type"] == "webpage"
+            assert "not installed" in result["error"]

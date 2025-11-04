@@ -5,6 +5,23 @@ from typing import Optional, Dict, List
 from urllib.parse import urlparse
 import logging
 
+# Optional dependencies - may not be installed
+try:
+    import yt_dlp
+    YT_DLP_AVAILABLE = True
+except ImportError:
+    yt_dlp = None
+    YT_DLP_AVAILABLE = False
+
+try:
+    import requests
+    from bs4 import BeautifulSoup
+    WEB_SCRAPING_AVAILABLE = True
+except ImportError:
+    requests = None
+    BeautifulSoup = None
+    WEB_SCRAPING_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -80,9 +97,7 @@ class MetadataFetcher:
         Returns:
             Dict with video metadata
         """
-        try:
-            import yt_dlp
-        except ImportError:
+        if not YT_DLP_AVAILABLE:
             logger.error("yt-dlp not installed. Install with: pip install yt-dlp")
             return {
                 "title": "",
@@ -148,10 +163,7 @@ class MetadataFetcher:
         Returns:
             Dict with webpage metadata
         """
-        try:
-            import requests
-            from bs4 import BeautifulSoup
-        except ImportError:
+        if not WEB_SCRAPING_AVAILABLE:
             logger.error("requests or beautifulsoup4 not installed")
             return {
                 "title": "",
