@@ -561,6 +561,104 @@ def lookup(identifiers: tuple, url: Optional[str], verbose: bool, db_path: Optio
                 click.echo(f"✗ No bookmark found with display ID: {result['identifier']}")
 
 
+@cli.command(name='search-bookmarks')
+@click.argument("query", required=False)
+@click.option("--page", default=1, type=click.IntRange(1), help="Page number (default: 1)")
+@click.option("--limit", default=50, type=click.IntRange(1, 100), help="Results per page (max 100, default: 50)")
+@click.option("--sort", default="created_desc", type=click.Choice(["created_desc", "created_asc", "title_asc"]), help="Sort order")
+@click.option("--verbose", "-v", is_flag=True, help="Show full bookmark details")
+@click.option("--db-path", type=click.Path(), help="Path to database file")
+@handle_cli_errors
+def search_bookmarks(query: Optional[str], page: int, limit: int, sort: str, verbose: bool, db_path: Optional[str]):
+    """
+    Search bookmarks using Lucene query syntax.
+
+    If no query provided, lists all bookmarks with pagination.
+
+    \b
+    Supported query syntax:
+      - Field search:    title:python, tags:tutorial, description:api, url:github.com
+      - Boolean ops:     title:python AND tags:tutorial
+      - OR operator:     title:python OR title:javascript
+      - NOT operator:    title:python NOT tags:beginner
+      - Wildcards:       title:*neural*, tags:*learn*
+      - Phrases:         title:"machine learning"
+      - Grouping:        (title:python OR title:js) AND tags:tutorial
+
+    \b
+    Examples:
+      diigo search-bookmarks "title:python"
+      diigo search-bookmarks "tags:tutorial AND tags:python"
+      diigo search-bookmarks "title:*neural* OR title:*network*"
+      diigo search-bookmarks "(title:python OR title:javascript) AND tags:tutorial"
+      diigo search-bookmarks --page 2 --limit 20 --sort title_asc
+    """
+    with db_session_manager(db_path) as session:
+        # Create service (no Diigo client needed for search)
+        service = BookmarkService(session=session)
+
+        try:
+            # Call service layer
+            result = service.search_bookmarks(
+                query=query,
+                page=page,
+                limit=limit,
+                sort=sort
+            )
+        except ValueError as e:
+            click.echo(f"✗ Invalid query: {e}", err=True)
+            raise click.Abort()
+
+        # Display results
+        bookmarks = result['bookmarks']
+        pagination = result['pagination']
+
+        if not bookmarks:
+            if query:
+                click.echo(f"No bookmarks found matching: {query}")
+            else:
+                click.echo("No bookmarks in database")
+            return
+
+        # Header
+        if query:
+            click.echo(f"\nFound {pagination['total_items']} bookmarks matching: {query}\n")
+        else:
+            click.echo(f"\nShowing {len(bookmarks)} of {pagination['total_items']} bookmarks\n")
+
+        # Display bookmarks
+        for bm_dict in bookmarks:
+            # Convert dict to object-like structure for _display_bookmark
+            class BookmarkStub:
+                pass
+            bm = BookmarkStub()
+            bm.id = bm_dict['id']
+            bm.display_id = bm_dict['display_id']
+            bm.url = bm_dict['url']
+            bm.title = bm_dict['title']
+            bm.description = bm_dict['description']
+            bm.created_at = bm_dict['created_at']
+            bm.updated_at = bm_dict['updated_at']
+            # Create tag stubs
+            class TagStub:
+                pass
+            bm.tags = []
+            for tag_name in bm_dict['tags']:
+                tag = TagStub()
+                tag.name = tag_name
+                bm.tags.append(tag)
+
+            _display_bookmark(bm, verbose)
+
+        # Pagination info
+        if pagination['total_pages'] > 1:
+            click.echo(f"Page {pagination['page']} of {pagination['total_pages']}")
+            if pagination['has_next']:
+                click.echo(f"  Next page: --page {pagination['page'] + 1}")
+            if pagination['has_prev']:
+                click.echo(f"  Prev page: --page {pagination['page'] - 1}")
+
+
 def _display_lookup_results(result: dict, verbose: bool):
     """Display lookup results from service."""
     if result['exact_match']:
