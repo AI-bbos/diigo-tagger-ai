@@ -90,7 +90,7 @@ class TestDiigoClient:
         mock_response.text = "Unauthorized"
         mock_get.return_value = mock_response
 
-        client = DiigoClient(api_key="invalid-key", username="testuser")
+        client = DiigoClient(api_key="invalid-key", username="testuser", password="test-pass")
         with pytest.raises(Exception, match="Authentication failed"):
             client.fetch_bookmarks()
 
