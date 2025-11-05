@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Search Syntax - Help - Diigo Tagger{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-0">
+    <!-- Breadcrumb -->
+    <nav class="mb-6 text-sm text-gray-600">
+        <a href="/help" class="hover:text-indigo-600">Help</a>
+        <span class="mx-2">/</span>
+        <span class="text-gray-900">Search Syntax</span>
+    </nav>
+
+    <h1 class="text-3xl font-bold text-gray-900 mb-2">Search Syntax</h1>
+    <p class="text-gray-600 mb-8">Powerful Lucene query syntax for searching bookmarks</p>
+
+    <!-- Quick Reference -->
+    <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-6 mb-8">
+        <h2 class="text-lg font-semibold text-indigo-900 mb-4">Quick Reference</h2>
+        <div class="grid md:grid-cols-2 gap-4 text-sm">
+            <div>
+                <p class="font-mono text-indigo-800">title:python</p>
+                <p class="text-indigo-700">Title contains "python"</p>
+            </div>
+            <div>
+                <p class="font-mono text-indigo-800">tags:tutorial</p>
+                <p class="text-indigo-700">Has tag "tutorial"</p>
+            </div>
+            <div>
+                <p class="font-mono text-indigo-800">title:python AND tags:web</p>
+                <p class="text-indigo-700">Both conditions must match</p>
+            </div>
+            <div>
+                <p class="font-mono text-indigo-800">tags:react OR tags:vue</p>
+                <p class="text-indigo-700">Either tag matches</p>
+            </div>
+            <div>
+                <p class="font-mono text-indigo-800">title:"machine learning"</p>
+                <p class="text-indigo-700">Exact phrase in title</p>
+            </div>
+            <div>
+                <p class="font-mono text-indigo-800">tags:java*</p>
+                <p class="text-indigo-700">Tags starting with "java"</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Searchable Fields -->
+    <section class="mb-8">
+        <h2 class="text-2xl font-bold text-gray-900 mb-4">Searchable Fields</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-gray-200 rounded-lg p-4">
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">title</h3>
+                <p class="text-gray-700 mb-2">Search in bookmark titles</p>
+                <code class="block bg-gray-100 p-2 rounded text-sm">title:python</code>
+                <code class="block bg-gray-100 p-2 rounded text-sm mt-1">title:"web development"</code>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg p-4">
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">description</h3>
+                <p class="text-gray-700 mb-2">Search in bookmark descriptions</p>
+                <code class="block bg-gray-100 p-2 rounded text-sm">description:tutorial</code>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg p-4">
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">tags</h3>
+                <p class="text-gray-700 mb-2">Search bookmark tags</p>
+                <code class="block bg-gray-100 p-2 rounded text-sm">tags:python</code>
+                <code class="block bg-gray-100 p-2 rounded text-sm mt-1">tags:web AND tags:javascript</code>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg p-4">
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">url</h3>
+                <p class="text-gray-700 mb-2">Search in URLs</p>
+                <code class="block bg-gray-100 p-2 rounded text-sm">url:github.com</code>
+            </div>
+        </div>
+    </section>
+
+    <!-- Operators -->
+    <section class="mb-8">
+        <h2 class="text-2xl font-bold text-gray-900 mb-4">Operators</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-gray-200 rounded-lg p-4">
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">AND</h3>
+                <p class="text-gray-700 mb-2">Both terms must be present</p>
+                <code class="block bg-gray-100 p-2 rounded text-sm">title:python AND tags:tutorial</code>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg p-4">
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">OR</h3>
+                <p class="text-gray-700 mb-2">Either term can be present</p>
+                <code class="block bg-gray-100 p-2 rounded text-sm">tags:react OR tags:vue</code>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg p-4">
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">NOT</h3>
+                <p class="text-gray-700 mb-2">Exclude results with this term</p>
+                <code class="block bg-gray-100 p-2 rounded text-sm">tags:python NOT tags:django</code>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg p-4">
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">Grouping ( )</h3>
+                <p class="text-gray-700 mb-2">Group conditions together</p>
+                <code class="block bg-gray-100 p-2 rounded text-sm">(tags:python OR tags:java) AND tags:web</code>
+            </div>
+        </div>
+    </section>
+
+    <!-- Special Features -->
+    <section class="mb-8">
+        <h2 class="text-2xl font-bold text-gray-900 mb-4">Special Features</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-gray-200 rounded-lg p-4">
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">Phrase Search</h3>
+                <p class="text-gray-700 mb-2">Use quotes for exact phrases</p>
+                <code class="block bg-gray-100 p-2 rounded text-sm">title:"machine learning"</code>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg p-4">
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">Wildcards</h3>
+                <p class="text-gray-700 mb-2">Use * for zero or more characters</p>
+                <code class="block bg-gray-100 p-2 rounded text-sm">tags:java*</code>
+                <p class="text-xs text-gray-600 mt-1">Matches: java, javascript, javaee, etc.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Examples -->
+    <section class="mb-8">
+        <h2 class="text-2xl font-bold text-gray-900 mb-4">Real-World Examples</h2>
+
+        <div class="bg-gray-50 rounded-lg p-6 space-y-4">
+            <div>
+                <p class="font-semibold text-gray-800 mb-1">Find all Python tutorials</p>
+                <code class="block bg-white p-3 rounded text-sm border border-gray-300">title:python AND tags:tutorial</code>
+            </div>
+
+            <div>
+                <p class="font-semibold text-gray-800 mb-1">Find React or Vue resources</p>
+                <code class="block bg-white p-3 rounded text-sm border border-gray-300">tags:react OR tags:vue</code>
+            </div>
+
+            <div>
+                <p class="font-semibold text-gray-800 mb-1">Find web development resources, excluding WordPress</p>
+                <code class="block bg-white p-3 rounded text-sm border border-gray-300">tags:web NOT tags:wordpress</code>
+            </div>
+
+            <div>
+                <p class="font-semibold text-gray-800 mb-1">Find GitHub repositories about machine learning</p>
+                <code class="block bg-white p-3 rounded text-sm border border-gray-300">url:github.com AND title:"machine learning"</code>
+            </div>
+
+            <div>
+                <p class="font-semibold text-gray-800 mb-1">Find all JavaScript-related tags</p>
+                <code class="block bg-white p-3 rounded text-sm border border-gray-300">tags:java*</code>
+            </div>
+
+            <div>
+                <p class="font-semibold text-gray-800 mb-1">Complex query with grouping</p>
+                <code class="block bg-white p-3 rounded text-sm border border-gray-300">(tags:python OR tags:java) AND (tags:web OR tags:api) NOT tags:deprecated</code>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tips -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8">
+        <h3 class="text-sm font-semibold text-blue-900 mb-2">💡 Pro Tips</h3>
+        <ul class="text-sm text-blue-800 space-y-1 list-disc list-inside">
+            <li>Searches are case-insensitive</li>
+            <li>Use wildcards (*) for flexible matching</li>
+            <li>Combine multiple fields for precise results</li>
+            <li>Use parentheses for complex queries</li>
+            <li>Click tags on bookmarks to auto-search for that tag</li>
+        </ul>
+    </div>
+
+    <!-- Back Link -->
+    <div class="text-center">
+        <a href="/help" class="text-indigo-600 hover:text-indigo-800 font-medium">
+            ← Back to Help Index
+        </a>
+    </div>
+</div>
+{% endblock %}

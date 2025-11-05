@@ -290,6 +290,24 @@ async def help_database_operations(request: Request):
     )
 
 
+@app.get("/help/search-syntax", response_class=HTMLResponse)
+async def help_search_syntax(request: Request):
+    """Help page for search query syntax."""
+    return templates.TemplateResponse(
+        "help_search.html",
+        {"request": request, "active_nav": "help"}
+    )
+
+
+@app.get("/tags", response_class=HTMLResponse)
+async def tags_placeholder(request: Request):
+    """Placeholder for tags page (Phase 3)."""
+    return templates.TemplateResponse(
+        "tags_placeholder.html",
+        {"request": request, "active_nav": "tags"}
+    )
+
+
 @app.get("/sync", response_class=HTMLResponse)
 async def sync_page(request: Request):
     """Sync from Diigo page."""
