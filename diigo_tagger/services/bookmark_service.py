@@ -96,7 +96,7 @@ class BookmarkService:
                     existing = self.session.query(Bookmark).filter_by(url=bookmark_data.url).first()
 
                 # Parse created_at string to datetime if needed
-                from datetime import datetime
+                from datetime import datetime, timezone
                 diigo_created_at = None
                 if bookmark_data.created_at:
                     try:
@@ -109,19 +109,23 @@ class BookmarkService:
                     # Update existing bookmark
                     existing.title = bookmark_data.title
                     existing.description = bookmark_data.description
-                    # Note: DiigoBookmark doesn't have shared or updated_at fields
+                    # Manually set updated_at to track when our tool modified this bookmark
+                    existing.updated_at = datetime.now(timezone.utc)
+                    # Note: Don't change created_at - it should remain fixed from initial creation
                     # Don't update tags for existing bookmarks to preserve user modifications
                     updated_bookmarks += 1
                     bookmark_obj = existing
                     logger.debug(f"Updated bookmark: {bookmark_data.url}")
                 else:
                     # Create new bookmark
+                    # Set created_at from Diigo's timestamp (not auto-generated)
                     bookmark_obj = Bookmark(
                         display_id=Bookmark.generate_display_id(bookmark_data.url),
                         url=bookmark_data.url,
                         title=bookmark_data.title,
                         description=bookmark_data.description,
-                        diigo_created_at=diigo_created_at
+                        created_at=diigo_created_at or datetime.now(timezone.utc),  # Use Diigo date, fallback to now
+                        diigo_created_at=diigo_created_at  # Keep copy for reference
                     )
                     self.session.add(bookmark_obj)
                     new_bookmarks += 1
@@ -408,16 +412,21 @@ class BookmarkService:
         # Create or update bookmark in our database
         if existing_bookmark:
             # Update existing bookmark
+            from datetime import datetime, timezone
             bookmark = existing_bookmark
             bookmark.title = final_title
             bookmark.description = final_description
             bookmark.shared = shared
             bookmark.outline = outline
             bookmark.groups = groups
+            # Manually set updated_at to track when our tool modified this bookmark
+            bookmark.updated_at = datetime.now(timezone.utc)
+            # Note: Don't change created_at - it should remain fixed from initial creation
             # Clear existing tags and re-add
             bookmark.tags.clear()
         else:
             # Create new bookmark
+            # created_at will use model default (func.now()) since we're adding "now"
             bookmark = Bookmark(
                 display_id=display_id,
                 url=url,

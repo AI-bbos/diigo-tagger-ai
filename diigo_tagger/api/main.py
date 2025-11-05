@@ -4,12 +4,22 @@
 import uuid
 import logging
 import os
+import sys
 from typing import Optional
 from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Configure logging BEFORE any other imports that use logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -271,6 +281,15 @@ async def help_display_ids(request: Request):
     )
 
 
+@app.get("/help/database-operations", response_class=HTMLResponse)
+async def help_database_operations(request: Request):
+    """Help page for database operations (dangerous zone)."""
+    return templates.TemplateResponse(
+        "help_database.html",
+        {"request": request, "active_nav": "help"}
+    )
+
+
 @app.get("/sync", response_class=HTMLResponse)
 async def sync_page(request: Request):
     """Sync from Diigo page."""
@@ -284,6 +303,8 @@ async def sync_page(request: Request):
 async def sync_progress_stream(request: Request):
     """
     Server-Sent Events endpoint for sync progress updates.
+
+    Streams progress updates while sync is active, then sends completion event.
     """
     from fastapi.responses import StreamingResponse
     import asyncio
@@ -291,28 +312,46 @@ async def sync_progress_stream(request: Request):
 
     async def event_generator():
         last_state = {}
-        while sync_progress["active"]:
+
+        # Stream progress updates while active
+        while sync_progress["active"] or not sync_progress.get("complete", False):
             current_state = {
                 "downloaded": sync_progress["downloaded"],
                 "new_bookmarks": sync_progress["new_bookmarks"],
                 "updated_bookmarks": sync_progress["updated_bookmarks"],
                 "new_tags": sync_progress["new_tags"],
-                "updated_tags": sync_progress["updated_tags"]
+                "updated_tags": sync_progress["updated_tags"],
+                "active": sync_progress["active"],
+                "complete": sync_progress.get("complete", False),
+                "error": sync_progress.get("error")
             }
+
+            # Send update if state changed
             if current_state != last_state:
                 yield f"data: {json.dumps(current_state)}\n\n"
                 last_state = current_state.copy()
+                logger.debug(f"SSE sent: {current_state}")
+
+            # Exit if complete
+            if sync_progress.get("complete", False):
+                logger.info("SSE: Sync complete, closing stream")
+                break
+
             await asyncio.sleep(0.1)  # Check every 100ms
 
-        # Send final state
+        # Send final completion event
         final_state = {
             "downloaded": sync_progress["downloaded"],
             "new_bookmarks": sync_progress["new_bookmarks"],
             "updated_bookmarks": sync_progress["updated_bookmarks"],
             "new_tags": sync_progress["new_tags"],
-            "updated_tags": sync_progress["updated_tags"]
+            "updated_tags": sync_progress["updated_tags"],
+            "active": False,
+            "complete": True,
+            "error": sync_progress.get("error")
         }
         yield f"data: {json.dumps(final_state)}\n\n"
+        logger.info(f"SSE: Final state sent: {final_state}")
 
     return StreamingResponse(
         event_generator(),
@@ -320,6 +359,7 @@ async def sync_progress_stream(request: Request):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
         }
     )
 
@@ -327,11 +367,12 @@ async def sync_progress_stream(request: Request):
 @app.post("/api/sync", response_class=HTMLResponse)
 async def sync_from_diigo(request: Request):
     """
-    Trigger sync from Diigo.
+    Trigger sync from Diigo in a background thread.
 
-    Returns HTMX-compatible HTML fragment with results.
+    Returns HTMX-compatible HTML fragment that triggers SSE progress monitoring.
     """
     logger.info("=== SYNC ENDPOINT CALLED ===")
+    import threading
     from .routes.bookmarks import BookmarkService
     from ..clients.diigo_client import DiigoClient
 
@@ -374,86 +415,86 @@ async def sync_from_diigo(request: Request):
             </div>
         """)
 
-    try:
-        # Reset and activate progress tracking
-        sync_progress["downloaded"] = 0
-        sync_progress["new_bookmarks"] = 0
-        sync_progress["updated_bookmarks"] = 0
-        sync_progress["new_tags"] = 0
-        sync_progress["updated_tags"] = 0
-        sync_progress["active"] = True
+    # Reset and activate progress tracking
+    sync_progress["downloaded"] = 0
+    sync_progress["new_bookmarks"] = 0
+    sync_progress["updated_bookmarks"] = 0
+    sync_progress["new_tags"] = 0
+    sync_progress["updated_tags"] = 0
+    sync_progress["active"] = True
+    sync_progress["error"] = None
+    sync_progress["complete"] = False
 
-        # Create clients and service
-        session = get_session()
-        diigo_client = DiigoClient(api_key=api_key, username=username, password=password)
-        service = BookmarkService(session=session, diigo_client=diigo_client)
+    def run_sync_in_thread():
+        """Run the sync operation in a background thread."""
+        session = None
+        try:
+            logger.info("Starting background sync thread")
+            # Create clients and service in the thread
+            session = get_session()
+            diigo_client = DiigoClient(api_key=api_key, username=username, password=password)
+            service = BookmarkService(session=session, diigo_client=diigo_client)
 
-        # Progress callback to update counters
-        def progress_callback(downloaded, new_bookmarks, updated_bookmarks, new_tags, updated_tags):
-            sync_progress["downloaded"] = downloaded
-            sync_progress["new_bookmarks"] = new_bookmarks
-            sync_progress["updated_bookmarks"] = updated_bookmarks
-            sync_progress["new_tags"] = new_tags
-            sync_progress["updated_tags"] = updated_tags
+            # Progress callback to update counters
+            def progress_callback(downloaded, new_bookmarks, updated_bookmarks, new_tags, updated_tags):
+                sync_progress["downloaded"] = downloaded
+                sync_progress["new_bookmarks"] = new_bookmarks
+                sync_progress["updated_bookmarks"] = updated_bookmarks
+                sync_progress["new_tags"] = new_tags
+                sync_progress["updated_tags"] = updated_tags
+                logger.info(f"Progress update: downloaded={downloaded}, new_bm={new_bookmarks}, updated_bm={updated_bookmarks}")
 
-        # Run sync with progress callback
-        downloaded, new_bookmarks, updated_bookmarks, new_tags, updated_tags = service.sync(
-            target_new_tags=target_new_tags,
-            fetch_all=fetch_all,
-            progress_callback=progress_callback
-        )
+            # Run sync with progress callback
+            downloaded, new_bookmarks, updated_bookmarks, new_tags, updated_tags = service.sync(
+                target_new_tags=target_new_tags,
+                fetch_all=fetch_all,
+                progress_callback=progress_callback
+            )
 
-        # Deactivate progress tracking
-        sync_progress["active"] = False
-        session.close()
+            # Mark as complete
+            sync_progress["complete"] = True
+            logger.info(f"Sync complete: {downloaded} downloaded, {new_bookmarks} new, {updated_bookmarks} updated")
 
-        # Return success HTML
-        return HTMLResponse(f"""
-            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-                <div class="flex">
-                    <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+        except Exception as e:
+            logger.error(f"Sync failed: {e}", exc_info=True)
+            sync_progress["error"] = str(e)
+            sync_progress["complete"] = True
+
+        finally:
+            # Deactivate progress tracking
+            sync_progress["active"] = False
+            if session:
+                session.close()
+            logger.info("Background sync thread finished")
+
+    # Start sync in background thread
+    sync_thread = threading.Thread(target=run_sync_in_thread, daemon=True)
+    sync_thread.start()
+    logger.info("Background sync thread started")
+
+    # Return HTML that shows progress indicators
+    return HTMLResponse("""
+        <div id="sync-status" class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div class="flex items-start">
+                <div class="flex-shrink-0">
+                    <svg class="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <div class="ml-3">
-                        <h3 class="text-sm font-medium text-green-800">Sync Complete!</h3>
-                        <div class="mt-2 text-sm text-green-700">
-                            <ul class="list-disc pl-5 space-y-1">
-                                <li>Downloaded from Diigo: <strong>{downloaded}</strong></li>
-                                <li>New bookmarks: <strong>{new_bookmarks}</strong></li>
-                                <li>Updated bookmarks: <strong>{updated_bookmarks}</strong></li>
-                                <li>New tags: <strong>{new_tags}</strong></li>
-                                <li>Updated tags: <strong>{updated_tags}</strong></li>
-                            </ul>
-                        </div>
-                        <div class="mt-4">
-                            <a href="/" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                                View Bookmarks →
-                            </a>
-                        </div>
-                    </div>
+                </div>
+                <div class="ml-3">
+                    <h3 class="text-sm font-medium text-blue-800">Syncing from Diigo...</h3>
+                    <p class="mt-1 text-sm text-blue-700">
+                        Please wait while we sync your bookmarks. Progress will update below.
+                    </p>
                 </div>
             </div>
-        """)
-
-    except Exception as e:
-        # Deactivate progress tracking on error
-        sync_progress["active"] = False
-        logger.error(f"Sync failed: {e}", exc_info=True)
-        return HTMLResponse(f"""
-            <div class="bg-red-50 border border-red-200 rounded-lg p-4">
-                <div class="flex">
-                    <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-                    </svg>
-                    <div class="ml-3">
-                        <h3 class="text-sm font-medium text-red-800">Sync Failed</h3>
-                        <p class="mt-1 text-sm text-red-700">
-                            {str(e)}
-                        </p>
-                    </div>
-                </div>
-            </div>
-        """)
+        </div>
+        <script>
+            // The SSE connection is already established by the page
+            // This message will be replaced when sync completes
+        </script>
+    """)
 
 
 logger.info("FastAPI application initialized")

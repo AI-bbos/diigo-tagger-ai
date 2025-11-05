@@ -166,7 +166,10 @@ document.body.addEventListener('htmx:beforeRequest', function(event) {
             button.disabled = true;
         }
 
-        // Start listening for progress updates via SSE
+        // Clear result area
+        document.getElementById('sync-result').innerHTML = '';
+
+        // Reset progress counters
         const progressDownloaded = document.getElementById('progress-downloaded');
         const progressNewBookmarks = document.getElementById('progress-new-bookmarks');
         const progressUpdatedBookmarks = document.getElementById('progress-updated-bookmarks');
@@ -179,43 +182,108 @@ document.body.addEventListener('htmx:beforeRequest', function(event) {
         progressNewTags.textContent = '0';
         progressUpdatedTags.textContent = '0';
 
+        // Close existing SSE connection
         if (eventSource) {
             eventSource.close();
         }
 
+        // Start SSE for progress updates
         eventSource = new EventSource('/api/sync/progress');
+
         eventSource.onmessage = function(event) {
             const data = JSON.parse(event.data);
+            console.log('SSE progress:', data);
+
+            // Update progress counters
             progressDownloaded.textContent = data.downloaded;
             progressNewBookmarks.textContent = data.new_bookmarks;
             progressUpdatedBookmarks.textContent = data.updated_bookmarks;
             progressNewTags.textContent = data.new_tags;
             progressUpdatedTags.textContent = data.updated_tags;
+
+            // Check if complete
+            if (data.complete) {
+                console.log('Sync complete!', data);
+
+                // Close SSE connection
+                eventSource.close();
+                eventSource = null;
+
+                // Re-enable button
+                if (button) {
+                    button.querySelector('.default-text').classList.remove('hidden');
+                    button.querySelector('.htmx-indicator').classList.add('hidden');
+                    button.disabled = false;
+                }
+
+                // Show completion message
+                const resultDiv = document.getElementById('sync-result');
+                if (data.error) {
+                    resultDiv.innerHTML = `
+                        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                            <div class="flex">
+                                <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                                </svg>
+                                <div class="ml-3">
+                                    <h3 class="text-sm font-medium text-red-800">Sync Failed</h3>
+                                    <p class="mt-1 text-sm text-red-700">${data.error}</p>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                            <div class="flex">
+                                <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                </svg>
+                                <div class="ml-3">
+                                    <h3 class="text-sm font-medium text-green-800">Sync Complete!</h3>
+                                    <div class="mt-2 text-sm text-green-700">
+                                        <ul class="list-disc pl-5 space-y-1">
+                                            <li>Downloaded from Diigo: <strong>${data.downloaded}</strong></li>
+                                            <li>New bookmarks: <strong>${data.new_bookmarks}</strong></li>
+                                            <li>Updated bookmarks: <strong>${data.updated_bookmarks}</strong></li>
+                                            <li>New tags: <strong>${data.new_tags}</strong></li>
+                                            <li>Updated tags: <strong>${data.updated_tags}</strong></li>
+                                        </ul>
+                                    </div>
+                                    <div class="mt-4">
+                                        <a href="/" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                                            View Bookmarks →
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
         };
 
-        eventSource.onerror = function() {
+        eventSource.onerror = function(err) {
+            console.error('SSE error:', err);
             if (eventSource) {
                 eventSource.close();
                 eventSource = null;
+            }
+
+            // Re-enable button
+            if (button) {
+                button.querySelector('.default-text').classList.remove('hidden');
+                button.querySelector('.htmx-indicator').classList.add('hidden');
+                button.disabled = false;
             }
         };
     }
 });
 
-document.body.addEventListener('htmx:afterRequest', function(event) {
-    if (event.target.id === 'sync-form') {
-        const button = event.target.querySelector('button[type="submit"]');
-        if (button) {
-            button.querySelector('.default-text').classList.remove('hidden');
-            button.querySelector('.htmx-indicator').classList.add('hidden');
-            button.disabled = false;
-        }
-
-        // Stop listening for progress updates
-        if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-        }
+// Cleanup on page unload
+window.addEventListener('beforeunload', function() {
+    if (eventSource) {
+        eventSource.close();
     }
 });
 </script>
