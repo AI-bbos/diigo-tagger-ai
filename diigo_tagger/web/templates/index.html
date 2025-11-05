@@ -96,7 +96,7 @@
             <select
                 id="sort"
                 name="sort"
-                onchange="this.form.submit()"
+                onchange="changeSortOrder(this.value)"
                 class="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
             >
                 <option value="created_desc" {% if sort == "created_desc" %}selected{% endif %}>Newest First</option>
@@ -257,6 +257,20 @@ function toggleDescription(button) {
         full.classList.remove('hidden');
         button.textContent = 'Show less';
     }
+}
+
+function changeSortOrder(sortValue) {
+    // Get current URL parameters
+    const url = new URL(window.location);
+
+    // Update sort parameter
+    url.searchParams.set('sort', sortValue);
+
+    // Reset to page 1 when changing sort
+    url.searchParams.set('page', '1');
+
+    // Navigate to new URL
+    window.location.href = url.toString();
 }
 </script>
 {% endblock %}
