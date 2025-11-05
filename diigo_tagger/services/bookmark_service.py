@@ -77,6 +77,9 @@ class BookmarkService:
 
         logger.info(f"Starting sync: target_new_tags={target_new_tags}, fetch_all={fetch_all}")
 
+        # Track tags created in this sync to prevent duplicates across batches
+        batch_tag_cache = {}  # tag_name -> Tag object
+
         while True:
             # Fetch next batch
             logger.info(f"Fetching batch: start={start}, count={batch_size}")
@@ -147,16 +150,24 @@ class BookmarkService:
                             continue
                         seen_tag_names.add(tag_name)
 
-                        # Get or create tag
-                        with self.session.no_autoflush:
-                            tag = self.session.query(Tag).filter_by(name=tag_name).first()
-
-                        if tag:
+                        # Check cache first (tags created in this sync)
+                        if tag_name in batch_tag_cache:
+                            tag = batch_tag_cache[tag_name]
                             updated_tags += 1
                         else:
-                            tag = Tag(name=tag_name, count=0, source="diigo")
-                            self.session.add(tag)
-                            new_tags += 1
+                            # Get or create tag
+                            with self.session.no_autoflush:
+                                tag = self.session.query(Tag).filter_by(name=tag_name).first()
+
+                            if tag:
+                                updated_tags += 1
+                            else:
+                                tag = Tag(name=tag_name, count=0, source="diigo")
+                                self.session.add(tag)
+                                new_tags += 1
+
+                            # Add to cache for subsequent bookmarks
+                            batch_tag_cache[tag_name] = tag
 
                         bookmark_tags.append(tag)
 

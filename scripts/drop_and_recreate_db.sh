@@ -11,7 +11,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Database path
-if [[ "$OSTYPE" == "darwin"* ]]; then
+if [[ "$OSTYPE" =~ ^darwin ]]; then
     DB_DIR="$HOME/Library/Application Support/diigo-tagger"
 else
     DB_DIR="$HOME/.local/share/diigo-tagger"
