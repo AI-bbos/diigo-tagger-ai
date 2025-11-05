@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+
+{% block title %}Database Operations - Help - Diigo Tagger{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-0">
+    <!-- Breadcrumb -->
+    <nav class="mb-6 text-sm text-gray-600">
+        <a href="/help" class="hover:text-indigo-600">Help</a>
+        <span class="mx-2">/</span>
+        <span class="text-gray-900">Database Operations</span>
+    </nav>
+
+    <!-- DANGER WARNING -->
+    <div class="mb-8 bg-red-100 border-4 border-red-500 rounded-lg p-6">
+        <div class="flex items-start">
+            <svg class="h-8 w-8 text-red-600 mr-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+            </svg>
+            <div>
+                <h2 class="text-2xl font-bold text-red-900 mb-2">⚠️ DANGER ZONE ⚠️</h2>
+                <p class="text-red-800 text-lg font-semibold">
+                    This page contains <span class="underline">DESTRUCTIVE</span> operations that can <span class="underline">PERMANENTLY DELETE</span> your data.
+                </p>
+                <p class="text-red-700 mt-2">
+                    Read carefully and make backups before proceeding. When in doubt, DON'T DO IT.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <h1 class="text-3xl font-bold text-gray-900 mb-6">Database Operations</h1>
+
+    <!-- Quick Links -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8">
+        <h3 class="text-sm font-semibold text-blue-900 mb-2">Quick Links</h3>
+        <ul class="text-sm text-blue-800 space-y-1">
+            <li><a href="#backup" class="hover:underline">→ Backup Operations (SAFE)</a></li>
+            <li><a href="#drop" class="hover:underline">→ Drop Database (NUCLEAR)</a></li>
+            <li><a href="#migration" class="hover:underline">→ Migration Scripts</a></li>
+            <li><a href="#queries" class="hover:underline">→ Manual SQL Queries</a></li>
+            <li><a href="#recovery" class="hover:underline">→ Recovery Procedures</a></li>
+        </ul>
+    </div>
+
+    <!-- Database Location -->
+    <section class="mb-8">
+        <h2 class="text-2xl font-bold text-gray-900 mb-4">Database Location</h2>
+        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+            <p class="text-sm text-gray-700 mb-2"><strong>macOS/Linux:</strong></p>
+            <code class="block bg-gray-800 text-gray-100 p-3 rounded text-sm font-mono">
+                ~/Library/Application Support/diigo-tagger/tags.db
+            </code>
+            <p class="text-xs text-gray-600 mt-3">
+                <strong>Related files:</strong> tags.db-shm (shared memory), tags.db-wal (write-ahead log)
+            </p>
+        </div>
+    </section>
+
+    <!-- Backup Operations -->
+    <section id="backup" class="mb-8">
+        <h2 class="text-2xl font-bold text-gray-900 mb-4">✓ Backup Operations (SAFE)</h2>
+
+        <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+            <p class="text-green-800 font-semibold">Always backup before dangerous operations!</p>
+        </div>
+
+        <h3 class="text-xl font-semibold text-gray-800 mb-3">Create Backup</h3>
+        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200 mb-6">
+            <pre class="text-sm font-mono text-gray-800 overflow-x-auto">cp -r "$HOME/Library/Application Support/diigo-tagger" \
+   "$HOME/Library/Application Support/diigo-tagger.backup-$(date +%Y%m%d-%H%M%S)"</pre>
+        </div>
+
+        <h3 class="text-xl font-semibold text-gray-800 mb-3">Restore from Backup</h3>
+        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+            <ol class="list-decimal list-inside space-y-2 text-sm text-gray-700">
+                <li>Stop the application first!</li>
+                <li>Remove current database: <code class="bg-gray-200 px-2 py-1 rounded text-xs">rm -rf "$HOME/Library/Application Support/diigo-tagger"</code></li>
+                <li>Restore: <code class="bg-gray-200 px-2 py-1 rounded text-xs">cp -r "$HOME/Library/Application Support/diigo-tagger.backup-YYYYMMDD-HHMMSS" ...</code></li>
+            </ol>
+        </div>
+    </section>
+
+    <!-- Drop Database -->
+    <section id="drop" class="mb-8">
+        <div class="bg-red-50 border-4 border-red-500 rounded-lg p-6">
+            <h2 class="text-2xl font-bold text-red-900 mb-4 flex items-center">
+                <svg class="h-8 w-8 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                </svg>
+                Drop and Recreate Database
+            </h2>
+
+            <div class="mb-6">
+                <h3 class="text-lg font-bold text-red-900 mb-2">🚨 NUCLEAR OPTION - READ THIS FIRST 🚨</h3>
+
+                <div class="bg-white border-2 border-red-400 rounded p-4 mb-4">
+                    <p class="text-red-900 font-bold mb-2">⚠️ THIS WILL PERMANENTLY DELETE:</p>
+                    <ul class="list-disc list-inside text-red-800 space-y-1 text-sm">
+                        <li>All bookmarks in the local database</li>
+                        <li>All tags and tag associations</li>
+                        <li>All user edits and modifications</li>
+                        <li><strong>CANNOT BE UNDONE WITHOUT BACKUP</strong></li>
+                    </ul>
+                </div>
+
+                <div class="bg-green-100 border border-green-300 rounded p-3 mb-4">
+                    <p class="text-green-900 font-semibold mb-1">✓ This will NOT delete:</p>
+                    <ul class="list-disc list-inside text-green-800 text-sm">
+                        <li>Bookmarks on Diigo.com (they're safe)</li>
+                        <li>Your Diigo account data</li>
+                    </ul>
+                </div>
+
+                <div class="bg-yellow-50 border border-yellow-300 rounded p-3">
+                    <p class="text-yellow-900 font-semibold mb-1">When to use this:</p>
+                    <ul class="list-disc list-inside text-yellow-800 text-sm">
+                        <li>You want to start fresh with a clean database</li>
+                        <li>Your database has corrupted date fields from old sync code</li>
+                        <li>You've verified backups exist and you're ready to lose local data</li>
+                    </ul>
+                </div>
+            </div>
+
+            <h3 class="text-lg font-bold text-red-900 mb-3">Procedure</h3>
+
+            <div class="space-y-4">
+                <div class="bg-white rounded p-4 border-2 border-red-300">
+                    <h4 class="font-bold text-red-900 mb-2">Step 1: BACKUP (MANDATORY)</h4>
+                    <pre class="text-xs font-mono bg-gray-100 p-2 rounded overflow-x-auto">cp -r "$HOME/Library/Application Support/diigo-tagger" \
+   "$HOME/Library/Application Support/diigo-tagger.backup-$(date +%Y%m%d-%H%M%S)"</pre>
+                </div>
+
+                <div class="bg-white rounded p-4 border-2 border-red-300">
+                    <h4 class="font-bold text-red-900 mb-2">Step 2: Stop Application</h4>
+                    <p class="text-sm text-red-800">Press <kbd class="bg-gray-200 px-2 py-1 rounded">Ctrl+C</kbd> in terminal running uvicorn</p>
+                </div>
+
+                <div class="bg-white rounded p-4 border-2 border-red-300">
+                    <h4 class="font-bold text-red-900 mb-2">Step 3: Drop Database</h4>
+                    <pre class="text-xs font-mono bg-gray-100 p-2 rounded overflow-x-auto">rm -f "$HOME/Library/Application Support/diigo-tagger/tags.db"
+rm -f "$HOME/Library/Application Support/diigo-tagger/tags.db-shm"
+rm -f "$HOME/Library/Application Support/diigo-tagger/tags.db-wal"</pre>
+                </div>
+
+                <div class="bg-white rounded p-4 border-2 border-red-300">
+                    <h4 class="font-bold text-red-900 mb-2">Step 4: Recreate Database</h4>
+                    <pre class="text-xs font-mono bg-gray-100 p-2 rounded overflow-x-auto">cd /path/to/diigo_tagger
+poetry run python -c "from diigo_tagger.db import init_db; init_db(); print('Database initialized')"</pre>
+                </div>
+
+                <div class="bg-white rounded p-4 border-2 border-red-300">
+                    <h4 class="font-bold text-red-900 mb-2">Step 5: Full Sync</h4>
+                    <p class="text-sm text-red-800 mb-2">Start server and go to:</p>
+                    <a href="/sync" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm">
+                        <svg class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Go to Sync Page
+                    </a>
+                    <p class="text-xs text-red-700 mt-2">Select "Full Sync" and wait 15-30 minutes for completion</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Migration Scripts -->
+    <section id="migration" class="mb-8">
+        <h2 class="text-2xl font-bold text-gray-900 mb-4">Migration Scripts</h2>
+
+        <p class="text-gray-700 mb-4">Migration scripts fix data issues without dropping the database.</p>
+
+        <div class="bg-white border border-gray-200 rounded-lg p-6">
+            <h3 class="text-xl font-semibold text-gray-800 mb-3">Date Migration</h3>
+            <p class="text-sm text-gray-700 mb-3">
+                Copies <code class="bg-gray-200 px-2 py-1 rounded">diigo_created_at</code> →
+                <code class="bg-gray-200 px-2 py-1 rounded">created_at</code> for bookmarks synced with old code.
+            </p>
+
+            <div class="bg-gray-50 rounded p-4 border border-gray-200">
+                <pre class="text-sm font-mono">cd /path/to/diigo_tagger
+python scripts/migrate_created_dates.py</pre>
+            </div>
+
+            <p class="text-xs text-gray-600 mt-3">
+                ✓ Safe to run - only updates dates, doesn't delete data. But backup first!
+            </p>
+        </div>
+    </section>
+
+    <!-- Manual Queries -->
+    <section id="queries" class="mb-8">
+        <h2 class="text-2xl font-bold text-gray-900 mb-4">Manual SQL Queries</h2>
+
+        <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+            <h3 class="text-lg font-semibold text-green-900 mb-3">✓ Read-Only Queries (SAFE)</h3>
+
+            <details class="mb-3">
+                <summary class="cursor-pointer font-semibold text-green-800 hover:text-green-600">Database Stats</summary>
+                <pre class="mt-2 text-xs font-mono bg-white p-3 rounded overflow-x-auto">sqlite3 "$HOME/Library/Application Support/diigo-tagger/tags.db" "
+SELECT 'Bookmarks:', COUNT(*) FROM bookmarks
+UNION ALL
+SELECT 'Tags:', COUNT(*) FROM tags
+UNION ALL
+SELECT 'Tag Associations:', COUNT(*) FROM bookmark_tags;
+"</pre>
+            </details>
+
+            <details class="mb-3">
+                <summary class="cursor-pointer font-semibold text-green-800 hover:text-green-600">Date Distribution by Year</summary>
+                <pre class="mt-2 text-xs font-mono bg-white p-3 rounded overflow-x-auto">sqlite3 "$HOME/Library/Application Support/diigo-tagger/tags.db" "
+SELECT
+    strftime('%Y', created_at) as year,
+    COUNT(*) as count
+FROM bookmarks
+GROUP BY year
+ORDER BY year;
+"</pre>
+            </details>
+
+            <details>
+                <summary class="cursor-pointer font-semibold text-green-800 hover:text-green-600">Most Popular Tags (Top 20)</summary>
+                <pre class="mt-2 text-xs font-mono bg-white p-3 rounded overflow-x-auto">sqlite3 "$HOME/Library/Application Support/diigo-tagger/tags.db" "
+SELECT
+    t.name,
+    COUNT(bt.bookmark_id) as usage_count
+FROM tags t
+LEFT JOIN bookmark_tags bt ON t.id = bt.tag_id
+GROUP BY t.name
+ORDER BY usage_count DESC
+LIMIT 20;
+"</pre>
+            </details>
+        </div>
+
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+            <h3 class="text-lg font-semibold text-red-900 mb-2">⚠️ Destructive Queries (DANGEROUS)</h3>
+            <p class="text-sm text-red-800 mb-3">These modify or delete data. <strong>BACKUP FIRST!</strong></p>
+
+            <details class="mb-3">
+                <summary class="cursor-pointer font-semibold text-red-700 hover:text-red-600">Delete Orphaned Tags</summary>
+                <div class="mt-2 text-xs">
+                    <p class="text-red-800 mb-2">Find them first (safe):</p>
+                    <pre class="font-mono bg-white p-2 rounded mb-2 overflow-x-auto">sqlite3 ... "SELECT id, name FROM tags t WHERE NOT EXISTS (...)"</pre>
+                    <p class="text-red-900 font-bold mb-2">Then delete (DESTRUCTIVE):</p>
+                    <pre class="font-mono bg-white p-2 rounded overflow-x-auto">sqlite3 ... "DELETE FROM tags WHERE id IN (...)"</pre>
+                </div>
+            </details>
+
+            <details>
+                <summary class="cursor-pointer font-semibold text-red-700 hover:text-red-600">Vacuum Database (Reclaim Space)</summary>
+                <pre class="mt-2 text-xs font-mono bg-white p-2 rounded overflow-x-auto">sqlite3 "$HOME/Library/Application Support/diigo-tagger/tags.db" "VACUUM;"</pre>
+                <p class="text-xs text-red-700 mt-1">Locks database during operation but is safe</p>
+            </details>
+        </div>
+    </section>
+
+    <!-- Recovery -->
+    <section id="recovery" class="mb-8">
+        <h2 class="text-2xl font-bold text-gray-900 mb-4">Recovery Procedures</h2>
+
+        <div class="space-y-4">
+            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <h3 class="text-lg font-semibold text-yellow-900 mb-2">Database Corruption</h3>
+                <p class="text-sm text-yellow-800 mb-2"><strong>Symptoms:</strong> "database disk image is malformed", queries hang, missing data</p>
+                <ol class="list-decimal list-inside text-sm text-yellow-800 space-y-1">
+                    <li>Stop application</li>
+                    <li>Create backup (even corrupted DB might be partially recoverable)</li>
+                    <li>Try SQLite recovery: dump → recreate → restore</li>
+                    <li>If recovery fails: drop and recreate</li>
+                </ol>
+            </div>
+
+            <div class="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <h3 class="text-lg font-semibold text-orange-900 mb-2">Accidental Deletion</h3>
+                <p class="text-sm text-orange-800 mb-2"><strong>If database still open:</strong> DON'T close it! Immediately restore from backup.</p>
+                <p class="text-sm text-orange-800"><strong>If already closed:</strong> Restore from backup or drop + re-sync from Diigo</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Help -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h3 class="text-sm font-semibold text-blue-900 mb-2">Need Help?</h3>
+        <p class="text-sm text-blue-800 mb-2">
+            Full documentation with all commands is available at:
+            <code class="bg-white px-2 py-1 rounded">docs/database-operations.md</code>
+        </p>
+        <a href="/help" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium">
+            ← Back to Help Index
+        </a>
+    </div>
+</div>
+{% endblock %}

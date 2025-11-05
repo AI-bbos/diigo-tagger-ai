@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Help - Display IDs - Diigo Tagger{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-0">
+    <!-- Breadcrumb Navigation -->
+    <nav class="flex mb-4 text-sm" aria-label="Breadcrumb">
+        <ol class="inline-flex items-center space-x-1 md:space-x-3">
+            <li class="inline-flex items-center">
+                <a href="/" class="text-gray-500 hover:text-gray-700">Home</a>
+            </li>
+            <li>
+                <div class="flex items-center">
+                    <svg class="w-4 h-4 text-gray-400 mx-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+                    </svg>
+                    <a href="/help" class="text-gray-500 hover:text-gray-700">Help</a>
+                </div>
+            </li>
+            <li aria-current="page">
+                <div class="flex items-center">
+                    <svg class="w-4 h-4 text-gray-400 mx-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span class="text-gray-700 font-medium">Display IDs</span>
+                </div>
+            </li>
+        </ol>
+    </nav>
+
+    <h1 class="text-3xl font-bold text-gray-900 mb-6">Display IDs</h1>
+
+    <div class="bg-white shadow rounded-lg p-6 space-y-6">
+        <section>
+            <h2 class="text-xl font-semibold text-gray-900 mb-3">What is a Display ID?</h2>
+            <p class="text-gray-700">
+                A Display ID is a short, 8-character identifier for each bookmark, making it easy to reference bookmarks without typing long URLs.
+            </p>
+            <div class="mt-3 p-4 bg-gray-50 rounded-lg">
+                <p class="text-sm font-mono text-gray-800">
+                    Example: <span class="font-bold text-indigo-600">667ac2eb</span>
+                </p>
+            </div>
+        </section>
+
+        <section>
+            <h2 class="text-xl font-semibold text-gray-900 mb-3">How is it Generated?</h2>
+            <p class="text-gray-700 mb-2">
+                Display IDs are generated using a CRC32 hash of the bookmark's URL, then converted to hexadecimal format.
+            </p>
+            <ul class="list-disc list-inside text-gray-700 space-y-1 ml-4">
+                <li>Deterministic: Same URL always produces the same Display ID</li>
+                <li>Collision-resistant: Different URLs extremely unlikely to produce the same ID</li>
+                <li>Short and memorable: Only 8 characters</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2 class="text-xl font-semibold text-gray-900 mb-3">Where Can You Use Display IDs?</h2>
+
+            <h3 class="text-lg font-medium text-gray-800 mb-2 mt-4">1. CLI Commands</h3>
+            <div class="space-y-2">
+                <p class="text-gray-700">Look up a specific bookmark:</p>
+                <pre class="p-3 bg-gray-900 text-gray-100 rounded-lg text-sm overflow-x-auto">diigo lookup 667ac2eb</pre>
+
+                <p class="text-gray-700 mt-3">Look up multiple bookmarks at once:</p>
+                <pre class="p-3 bg-gray-900 text-gray-100 rounded-lg text-sm overflow-x-auto">diigo lookup 667ac2eb 26793dba 002e22ba</pre>
+            </div>
+
+            <h3 class="text-lg font-medium text-gray-800 mb-2 mt-4">2. API Endpoints</h3>
+            <div class="space-y-2">
+                <p class="text-gray-700">Fetch bookmark details via REST API:</p>
+                <pre class="p-3 bg-gray-900 text-gray-100 rounded-lg text-sm overflow-x-auto">GET /api/v1/bookmarks/667ac2eb</pre>
+            </div>
+
+            <h3 class="text-lg font-medium text-gray-800 mb-2 mt-4">3. Search Queries</h3>
+            <div class="space-y-2">
+                <p class="text-gray-700">Reference bookmarks in documentation or notes:</p>
+                <pre class="p-3 bg-gray-900 text-gray-100 rounded-lg text-sm overflow-x-auto">See bookmark 667ac2eb for swimming tutorial details</pre>
+            </div>
+        </section>
+
+        <section>
+            <h2 class="text-xl font-semibold text-gray-900 mb-3">Benefits</h2>
+            <ul class="list-disc list-inside text-gray-700 space-y-2 ml-4">
+                <li><strong>Easy to type:</strong> Much shorter than full URLs</li>
+                <li><strong>Human-friendly:</strong> Hexadecimal characters only (0-9, a-f)</li>
+                <li><strong>Unique per URL:</strong> Each bookmark has a unique identifier</li>
+                <li><strong>Persistent:</strong> ID doesn't change as long as the URL stays the same</li>
+                <li><strong>Copy-paste friendly:</strong> 8 characters fit easily in messages, notes, and scripts</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2 class="text-xl font-semibold text-gray-900 mb-3">Technical Details</h2>
+            <p class="text-gray-700 mb-2">
+                For developers and curious users:
+            </p>
+            <div class="p-4 bg-gray-50 rounded-lg">
+                <pre class="text-sm text-gray-800 overflow-x-auto"><code>import zlib
+
+def generate_display_id(url: str) -> str:
+    """Generate 8-character hex ID from URL using CRC32."""
+    crc = zlib.crc32(url.encode('utf-8')) & 0xffffffff
+    return format(crc, '08x')
+
+# Example:
+generate_display_id("https://www.youtube.com/watch?v=wrHL1igBhOg")
+# Returns: "667ac2eb"</code></pre>
+            </div>
+        </section>
+
+        <div class="mt-8 pt-6 border-t border-gray-200">
+            <a href="/" class="text-indigo-600 hover:text-indigo-800 font-medium">
+                ← Back to Bookmarks
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

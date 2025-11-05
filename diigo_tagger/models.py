@@ -45,7 +45,7 @@ class Tag(Base):
     __table_args__ = (
         CheckConstraint("length(name) > 0", name="name_not_empty"),
         CheckConstraint("count >= 0", name="count_non_negative"),
-        CheckConstraint("source IN ('user', 'master', 'system')", name="valid_source"),
+        CheckConstraint("source IN ('user', 'master', 'system', 'diigo')", name="valid_source"),
         Index("idx_tags_count", "count"),
         Index("idx_tags_last_used", "last_used"),
         Index("idx_tags_source", "source"),

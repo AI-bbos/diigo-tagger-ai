@@ -84,7 +84,45 @@ def handle_cli_errors(func):
     return wrapper
 
 
-@click.group()
+class HelpfulGroup(click.Group):
+    """
+    Custom Click Group that shows available commands on error.
+
+    When user provides invalid options at the top level,
+    shows helpful message with available commands instead of
+    just "No such option".
+    """
+
+    def parse_args(self, ctx, args):
+        """Override to provide helpful error messages."""
+        try:
+            return super().parse_args(ctx, args)
+        except click.exceptions.NoSuchOption as e:
+            # User provided an option that doesn't exist at this level
+            click.echo(f"Error: {e.message}\n", err=True)
+
+            # Suggest likely command based on the option
+            option_name = e.option_name
+            suggestion = None
+            if option_name == '--url':
+                suggestion = "add"
+            elif option_name in ['--query', '--pattern']:
+                suggestion = "search"
+            elif option_name in ['--limit', '--sort']:
+                suggestion = "list"
+
+            if suggestion:
+                click.echo(f"Did you mean: diigo {suggestion} {option_name} ...\n", err=True)
+
+            click.echo("Available commands:", err=True)
+            formatter = ctx.make_formatter()
+            self.format_commands(ctx, formatter)
+            click.echo(formatter.getvalue(), err=True)
+            click.echo("\nFor command-specific options, try: diigo <command> --help", err=True)
+            ctx.exit(2)
+
+
+@click.group(cls=HelpfulGroup)
 def cli():
     """Diigo Tagger AI - AI-powered bookmark tagging tool."""
     pass
@@ -339,21 +377,38 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
             shared=shared
         )
 
-        # Handle conflict
+        # Handle no changes (bookmark exists, no args passed)
+        if result.get('no_changes'):
+            click.echo("\n✓ Bookmark already exists (no changes)")
+            click.echo(f"  Display ID: {result['display_id']}")
+            click.echo(f"  Title: {result['title']}")
+            if result.get('description'):
+                click.echo(f"  Description: {result['description'][:100]}...")
+            click.echo(f"  Tags: {', '.join(result['tags'])}")
+            click.echo("\n💡 Tip: To update, use --title, --description, or --tags")
+            return
+
+        # Handle conflict (bookmark exists, args passed with differences)
         if result.get('conflict'):
             click.echo("\n⚠ Bookmark already exists!")
             click.echo(f"  Display ID: {result['existing']['display_id']}")
 
             # Show differences
             click.echo("\n📋 Current vs New:")
-            click.echo(f"\n  Title:")
-            click.echo(f"    Current: {result['existing']['title']}")
-            click.echo(f"    New:     {result['new']['title']}")
 
-            if result['existing']['description'] or result['new']['description']:
+            # Only show title if different
+            if result['existing']['title'] != result['new']['title']:
+                click.echo(f"\n  Title:")
+                click.echo(f"    Current: {result['existing']['title']}")
+                click.echo(f"    New:     {result['new']['title']}")
+
+            # Only show description if different
+            existing_desc = result['existing']['description']
+            new_desc = result['new']['description']
+            if existing_desc != new_desc:
                 click.echo(f"\n  Description:")
-                click.echo(f"    Current: {result['existing']['description'][:80] if result['existing']['description'] else '(none)'}...")
-                click.echo(f"    New:     {result['new']['description'][:80] if result['new']['description'] else '(none)'}...")
+                click.echo(f"    Current: {existing_desc[:80] if existing_desc else '(none)'}...")
+                click.echo(f"    New:     {new_desc[:80] if new_desc else '(none)'}...")
 
             click.echo(f"\n  Tags:")
             existing_set = set(result['existing']['tags'])
@@ -451,11 +506,6 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
         click.echo(f"  Description: {result['description'][:100]}...")
     click.echo(f"  Tags: {', '.join(result['tags'])}")
 
-    if openai_client and result.get('llm_suggestions'):
-        click.echo(f"\n  LLM Suggestions:")
-        click.echo(f"    Title: {result['llm_suggestions'].get('title')}")
-        click.echo(f"    Tags: {', '.join(result['llm_suggestions'].get('tags', []))}")
-
 
 @cli.command()
 @click.argument("identifiers", nargs=-1, required=False)  # Can be URL or display IDs
@@ -509,6 +559,104 @@ def lookup(identifiers: tuple, url: Optional[str], verbose: bool, db_path: Optio
                 _display_bookmark(result['exact_match'], verbose)
             else:
                 click.echo(f"✗ No bookmark found with display ID: {result['identifier']}")
+
+
+@cli.command(name='search-bookmarks')
+@click.argument("query", required=False)
+@click.option("--page", default=1, type=click.IntRange(1), help="Page number (default: 1)")
+@click.option("--limit", default=50, type=click.IntRange(1, 100), help="Results per page (max 100, default: 50)")
+@click.option("--sort", default="created_desc", type=click.Choice(["created_desc", "created_asc", "title_asc"]), help="Sort order")
+@click.option("--verbose", "-v", is_flag=True, help="Show full bookmark details")
+@click.option("--db-path", type=click.Path(), help="Path to database file")
+@handle_cli_errors
+def search_bookmarks(query: Optional[str], page: int, limit: int, sort: str, verbose: bool, db_path: Optional[str]):
+    """
+    Search bookmarks using Lucene query syntax.
+
+    If no query provided, lists all bookmarks with pagination.
+
+    \b
+    Supported query syntax:
+      - Field search:    title:python, tags:tutorial, description:api, url:github.com
+      - Boolean ops:     title:python AND tags:tutorial
+      - OR operator:     title:python OR title:javascript
+      - NOT operator:    title:python NOT tags:beginner
+      - Wildcards:       title:*neural*, tags:*learn*
+      - Phrases:         title:"machine learning"
+      - Grouping:        (title:python OR title:js) AND tags:tutorial
+
+    \b
+    Examples:
+      diigo search-bookmarks "title:python"
+      diigo search-bookmarks "tags:tutorial AND tags:python"
+      diigo search-bookmarks "title:*neural* OR title:*network*"
+      diigo search-bookmarks "(title:python OR title:javascript) AND tags:tutorial"
+      diigo search-bookmarks --page 2 --limit 20 --sort title_asc
+    """
+    with db_session_manager(db_path) as session:
+        # Create service (no Diigo client needed for search)
+        service = BookmarkService(session=session)
+
+        try:
+            # Call service layer
+            result = service.search_bookmarks(
+                query=query,
+                page=page,
+                limit=limit,
+                sort=sort
+            )
+        except ValueError as e:
+            click.echo(f"✗ Invalid query: {e}", err=True)
+            raise click.Abort()
+
+        # Display results
+        bookmarks = result['bookmarks']
+        pagination = result['pagination']
+
+        if not bookmarks:
+            if query:
+                click.echo(f"No bookmarks found matching: {query}")
+            else:
+                click.echo("No bookmarks in database")
+            return
+
+        # Header
+        if query:
+            click.echo(f"\nFound {pagination['total_items']} bookmarks matching: {query}\n")
+        else:
+            click.echo(f"\nShowing {len(bookmarks)} of {pagination['total_items']} bookmarks\n")
+
+        # Display bookmarks
+        for bm_dict in bookmarks:
+            # Convert dict to object-like structure for _display_bookmark
+            class BookmarkStub:
+                pass
+            bm = BookmarkStub()
+            bm.id = bm_dict['id']
+            bm.display_id = bm_dict['display_id']
+            bm.url = bm_dict['url']
+            bm.title = bm_dict['title']
+            bm.description = bm_dict['description']
+            bm.created_at = bm_dict['created_at']
+            bm.updated_at = bm_dict['updated_at']
+            # Create tag stubs
+            class TagStub:
+                pass
+            bm.tags = []
+            for tag_name in bm_dict['tags']:
+                tag = TagStub()
+                tag.name = tag_name
+                bm.tags.append(tag)
+
+            _display_bookmark(bm, verbose)
+
+        # Pagination info
+        if pagination['total_pages'] > 1:
+            click.echo(f"Page {pagination['page']} of {pagination['total_pages']}")
+            if pagination['has_next']:
+                click.echo(f"  Next page: --page {pagination['page'] + 1}")
+            if pagination['has_prev']:
+                click.echo(f"  Prev page: --page {pagination['page'] - 1}")
 
 
 def _display_lookup_results(result: dict, verbose: bool):

@@ -1,8 +1,9 @@
 # ABOUTME: Bookmark service for Diigo bookmark operations
-# ABOUTME: Handles sync, add, lookup with LLM-powered defaults and domain matching
+# ABOUTME: Handles sync, add, lookup, search with LLM-powered defaults and domain matching
 
 from typing import List, Dict, Optional, Tuple, Callable
 from urllib.parse import urlparse
+import math
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -10,6 +11,7 @@ from ..models import Tag, Bookmark
 from ..clients.diigo_client import DiigoClient
 from ..clients.openai_client import OpenAIClient
 from ..clients.metadata_fetcher import MetadataFetcher
+from .query_parser import LuceneQueryParser
 
 
 class BookmarkService:
@@ -20,92 +22,180 @@ class BookmarkService:
     and looking up bookmarks with smart domain/path matching.
     """
 
-    def __init__(self, session: Session, diigo_client: DiigoClient, openai_client: Optional[OpenAIClient] = None):
+    def __init__(
+        self,
+        session: Session,
+        diigo_client: Optional[DiigoClient] = None,
+        openai_client: Optional[OpenAIClient] = None
+    ):
         """
         Initialize bookmark service.
 
         Args:
             session: SQLAlchemy session for database operations
-            diigo_client: Diigo API client for bookmark operations
+            diigo_client: Optional Diigo API client (required for sync/add operations)
             openai_client: Optional OpenAI client for LLM-powered features
         """
         self.session = session
         self.diigo_client = diigo_client
         self.openai_client = openai_client
         self.metadata_fetcher = MetadataFetcher()
+        self.query_parser = LuceneQueryParser()
 
     def sync(
         self,
         target_new_tags: int,
         fetch_all: bool = False,
-        progress_callback: Optional[Callable[[int, int, int], None]] = None
-    ) -> Tuple[int, int, int]:
+        progress_callback: Optional[Callable[[int, int, int, int, int], None]] = None
+    ) -> Tuple[int, int, int, int, int]:
         """
-        Sync bookmarks from Diigo and update tag database.
+        Sync bookmarks from Diigo and save to database.
 
-        Fetches bookmarks in batches and extracts tags. Stops when target
-        number of NEW tags found or all bookmarks fetched.
+        Fetches bookmarks in batches and saves them along with their tags.
+        Stops when target number of NEW tags found or all bookmarks fetched.
 
         Args:
             target_new_tags: Number of new unique tags to find
             fetch_all: If True, fetch all bookmarks regardless of tag count
-            progress_callback: Optional callback(bookmarks_processed, tags_added, tags_updated)
+            progress_callback: Optional callback(downloaded, new_bookmarks, updated_bookmarks, new_tags, updated_tags)
                              called after each batch
 
         Returns:
-            Tuple of (bookmarks_processed, tags_added, tags_updated)
+            Tuple of (downloaded, new_bookmarks, updated_bookmarks, new_tags, updated_tags)
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         start = 0
         batch_size = 100  # API max per request
 
-        bookmarks_processed = 0
-        tags_added = 0
-        tags_updated = 0
+        downloaded = 0
+        new_bookmarks = 0
+        updated_bookmarks = 0
+        new_tags = 0
+        updated_tags = 0
+
+        logger.info(f"Starting sync: target_new_tags={target_new_tags}, fetch_all={fetch_all}")
+
+        # Track tags created in this sync to prevent duplicates across batches
+        batch_tag_cache = {}  # tag_name -> Tag object
 
         while True:
             # Fetch next batch
+            logger.info(f"Fetching batch: start={start}, count={batch_size}")
             batch = self.diigo_client.fetch_bookmarks(count=batch_size, start=start)
+
             if not batch:
+                logger.info(f"No more bookmarks to fetch (batch empty at start={start})")
                 break
 
-            bookmarks_processed += len(batch)
+            logger.info(f"Fetched {len(batch)} bookmarks from Diigo")
+            downloaded += len(batch)
 
-            # Process tags from this batch
-            for bookmark in batch:
-                for tag_name in bookmark.tags:
-                    # Normalize tag name
-                    tag_name = tag_name.strip().lower()
-                    if not tag_name:
-                        continue
+            # Process each bookmark
+            for bookmark_data in batch:
+                # Check if bookmark exists by URL (disable autoflush to prevent premature flushes)
+                with self.session.no_autoflush:
+                    existing = self.session.query(Bookmark).filter_by(url=bookmark_data.url).first()
 
-                    # Get or create tag
-                    tag = self.session.query(Tag).filter_by(name=tag_name).first()
-                    if tag:
-                        tag.count += 1
-                        tags_updated += 1
-                    else:
-                        tag = Tag(name=tag_name, count=1, source="user")
-                        self.session.add(tag)
-                        tags_added += 1
+                # Parse created_at string to datetime if needed
+                from datetime import datetime, timezone
+                diigo_created_at = None
+                if bookmark_data.created_at:
+                    try:
+                        # Parse Diigo format: "2015/05/04 05:40:36 +0000"
+                        diigo_created_at = datetime.strptime(bookmark_data.created_at, "%Y/%m/%d %H:%M:%S %z")
+                    except Exception as e:
+                        logger.warning(f"Failed to parse created_at '{bookmark_data.created_at}': {e}")
+
+                if existing:
+                    # Update existing bookmark
+                    existing.title = bookmark_data.title
+                    existing.description = bookmark_data.description
+                    # Manually set updated_at to track when our tool modified this bookmark
+                    existing.updated_at = datetime.now(timezone.utc)
+                    # Note: Don't change created_at - it should remain fixed from initial creation
+                    # Don't update tags for existing bookmarks to preserve user modifications
+                    updated_bookmarks += 1
+                    bookmark_obj = existing
+                    logger.debug(f"Updated bookmark: {bookmark_data.url}")
+                else:
+                    # Create new bookmark
+                    # Set created_at from Diigo's timestamp (not auto-generated)
+                    bookmark_obj = Bookmark(
+                        display_id=Bookmark.generate_display_id(bookmark_data.url),
+                        url=bookmark_data.url,
+                        title=bookmark_data.title,
+                        description=bookmark_data.description,
+                        created_at=diigo_created_at or datetime.now(timezone.utc),  # Use Diigo date, fallback to now
+                        diigo_created_at=diigo_created_at  # Keep copy for reference
+                    )
+                    self.session.add(bookmark_obj)
+                    new_bookmarks += 1
+                    logger.debug(f"Created new bookmark: {bookmark_data.url}")
+
+                    # Process tags for NEW bookmarks only
+                    bookmark_tags = []
+                    seen_tag_names = set()
+
+                    for tag_name in bookmark_data.tags:
+                        # Normalize tag name
+                        tag_name = tag_name.strip().lower()
+                        if not tag_name:
+                            continue
+
+                        # Skip duplicate tags in the same bookmark
+                        if tag_name in seen_tag_names:
+                            logger.debug(f"Skipping duplicate tag '{tag_name}' for bookmark")
+                            continue
+                        seen_tag_names.add(tag_name)
+
+                        # Check cache first (tags created in this sync)
+                        if tag_name in batch_tag_cache:
+                            tag = batch_tag_cache[tag_name]
+                            updated_tags += 1
+                        else:
+                            # Get or create tag
+                            with self.session.no_autoflush:
+                                tag = self.session.query(Tag).filter_by(name=tag_name).first()
+
+                            if tag:
+                                updated_tags += 1
+                            else:
+                                tag = Tag(name=tag_name, count=0, source="diigo")
+                                self.session.add(tag)
+                                new_tags += 1
+
+                            # Add to cache for subsequent bookmarks
+                            batch_tag_cache[tag_name] = tag
+
+                        bookmark_tags.append(tag)
+
+                    # Associate tags with bookmark
+                    bookmark_obj.tags = bookmark_tags
 
             # Commit this batch
             self.session.commit()
+            logger.info(f"Committed batch: downloaded={downloaded}, new={new_bookmarks}, updated={updated_bookmarks}, new_tags={new_tags}, updated_tags={updated_tags}")
 
             # Call progress callback if provided
             if progress_callback:
-                progress_callback(bookmarks_processed, tags_added, tags_updated)
+                progress_callback(downloaded, new_bookmarks, updated_bookmarks, new_tags, updated_tags)
 
             # Check stopping conditions
-            if not fetch_all and tags_added >= target_new_tags:
+            if not fetch_all and new_tags >= target_new_tags:
+                logger.info(f"Reached target of {target_new_tags} new tags, stopping")
                 break
 
             # If we got less than batch_size, we've reached the end
             if len(batch) < batch_size:
+                logger.info(f"Reached end of bookmarks (batch size {len(batch)} < {batch_size})")
                 break
 
             start += batch_size
 
-        return bookmarks_processed, tags_added, tags_updated
+        logger.info(f"Sync complete: downloaded={downloaded}, new={new_bookmarks}, updated={updated_bookmarks}, new_tags={new_tags}, updated_tags={updated_tags}")
+        return downloaded, new_bookmarks, updated_bookmarks, new_tags, updated_tags
 
     def add_bookmark(
         self,
@@ -166,7 +256,23 @@ class BookmarkService:
         Raises:
             ValueError: If Diigo API fails to create/update bookmark
         """
-        # Fetch webpage/video metadata
+        # Check if bookmark already exists FIRST (before expensive LLM calls)
+        display_id = Bookmark.generate_display_id(url)
+        existing_bookmark = self.session.query(Bookmark).filter_by(url=url).first()
+
+        # If bookmark exists and user didn't provide any overrides, no changes needed
+        if existing_bookmark and not (title or description or tags) and not conflict_resolution:
+            existing_tags = [tag.name for tag in existing_bookmark.tags]
+            return {
+                "no_changes": True,
+                "url": url,
+                "title": existing_bookmark.title,
+                "description": existing_bookmark.description,
+                "tags": existing_tags,
+                "display_id": existing_bookmark.display_id
+            }
+
+        # Fetch webpage/video metadata (only if needed)
         metadata = self.metadata_fetcher.fetch_metadata(url)
         fetched_title = metadata.get('title', '')
         fetched_description = metadata.get('description', '')
@@ -216,10 +322,6 @@ class BookmarkService:
             # TODO: Check similarity between user tags and LLM tags
             # For now, just combine them
             final_tags.extend(llm_tags)
-
-        # Check if bookmark already exists in local DB
-        display_id = Bookmark.generate_display_id(url)
-        existing_bookmark = self.session.query(Bookmark).filter_by(url=url).first()
 
         # If bookmark exists and no conflict resolution specified, return conflict info
         if existing_bookmark and not conflict_resolution:
@@ -321,16 +423,21 @@ class BookmarkService:
         # Create or update bookmark in our database
         if existing_bookmark:
             # Update existing bookmark
+            from datetime import datetime, timezone
             bookmark = existing_bookmark
             bookmark.title = final_title
             bookmark.description = final_description
             bookmark.shared = shared
             bookmark.outline = outline
             bookmark.groups = groups
+            # Manually set updated_at to track when our tool modified this bookmark
+            bookmark.updated_at = datetime.now(timezone.utc)
+            # Note: Don't change created_at - it should remain fixed from initial creation
             # Clear existing tags and re-add
             bookmark.tags.clear()
         else:
             # Create new bookmark
+            # created_at will use model default (func.now()) since we're adding "now"
             bookmark = Bookmark(
                 display_id=display_id,
                 url=url,
@@ -527,3 +634,102 @@ class BookmarkService:
                 })
 
         return results
+
+    def search_bookmarks(
+        self,
+        query: Optional[str] = None,
+        page: int = 1,
+        limit: int = 50,
+        sort: str = "created_desc"
+    ) -> Dict:
+        """
+        Search bookmarks with optional Lucene query syntax.
+
+        Args:
+            query: Optional Lucene query string (e.g., "title:python AND tags:tutorial")
+            page: Page number (1-indexed)
+            limit: Items per page (max 100)
+            sort: Sort order - "created_desc", "created_asc", or "title_asc"
+
+        Returns:
+            Dictionary with:
+            {
+                "bookmarks": [
+                    {
+                        "id": int,
+                        "display_id": str,
+                        "url": str,
+                        "title": str,
+                        "description": str,
+                        "tags": [str],
+                        "created_at": datetime,
+                        "updated_at": datetime
+                    },
+                    ...
+                ],
+                "pagination": {
+                    "page": int,
+                    "limit": int,
+                    "total_items": int,
+                    "total_pages": int,
+                    "has_next": bool,
+                    "has_prev": bool
+                },
+                "query": str (the query that was executed)
+            }
+
+        Raises:
+            ValueError: If query has invalid syntax or unsupported fields
+        """
+        # Start with base query
+        db_query = self.session.query(Bookmark)
+
+        # Apply Lucene query filter if provided
+        if query:
+            filter_expr = self.query_parser.parse(query)
+            if filter_expr is not None:
+                db_query = db_query.filter(filter_expr)
+
+        # Apply sorting
+        if sort == "created_asc":
+            db_query = db_query.order_by(Bookmark.created_at.asc())
+        elif sort == "title_asc":
+            db_query = db_query.order_by(Bookmark.title.asc())
+        else:  # default: created_desc
+            db_query = db_query.order_by(Bookmark.created_at.desc())
+
+        # Count total for pagination
+        total_items = db_query.count()
+        total_pages = math.ceil(total_items / limit) if total_items > 0 else 0
+
+        # Apply pagination
+        offset = (page - 1) * limit
+        bookmarks = db_query.offset(offset).limit(limit).all()
+
+        # Convert to dictionaries
+        bookmark_dicts = []
+        for bm in bookmarks:
+            tags = [tag.name for tag in bm.tags]
+            bookmark_dicts.append({
+                "id": bm.id,
+                "display_id": bm.display_id,
+                "url": bm.url,
+                "title": bm.title,
+                "description": bm.description,
+                "tags": tags,
+                "created_at": bm.created_at,
+                "updated_at": bm.updated_at
+            })
+
+        return {
+            "bookmarks": bookmark_dicts,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_items": total_items,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            },
+            "query": query
+        }

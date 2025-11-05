@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}Add Bookmark - Diigo Tagger{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-0">
+    <div class="max-w-2xl mx-auto text-center py-12">
+        <!-- Icon -->
+        <svg class="mx-auto h-24 w-24 text-gray-400 mb-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+
+        <h1 class="text-3xl font-bold text-gray-900 mb-4">Add Bookmark</h1>
+        <p class="text-lg text-gray-600 mb-8">
+            Coming in Phase 2!
+        </p>
+
+        <!-- Feature Preview -->
+        <div class="bg-green-50 border border-green-200 rounded-lg p-6 text-left max-w-lg mx-auto mb-8">
+            <h2 class="text-lg font-semibold text-green-900 mb-4">Planned Features</h2>
+            <ul class="space-y-3 text-gray-700">
+                <li class="flex items-start">
+                    <svg class="h-5 w-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                    </svg>
+                    <span><strong>Quick Add Form</strong> - Simple URL input with auto-fetch metadata</span>
+                </li>
+                <li class="flex items-start">
+                    <svg class="h-5 w-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                    </svg>
+                    <span><strong>AI-Powered Tags</strong> - Automatic tag suggestions from LLM</span>
+                </li>
+                <li class="flex items-start">
+                    <svg class="h-5 w-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                    </svg>
+                    <span><strong>Metadata Fetching</strong> - Auto-extract title, description from webpage</span>
+                </li>
+                <li class="flex items-start">
+                    <svg class="h-5 w-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                    </svg>
+                    <span><strong>Duplicate Detection</strong> - Check if bookmark already exists</span>
+                </li>
+                <li class="flex items-start">
+                    <svg class="h-5 w-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                    </svg>
+                    <span><strong>Conflict Resolution</strong> - Smart merge when bookmark exists</span>
+                </li>
+                <li class="flex items-start">
+                    <svg class="h-5 w-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                    </svg>
+                    <span><strong>Batch Import</strong> - Add multiple bookmarks at once</span>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Current State -->
+        <div class="bg-gray-50 border border-gray-200 rounded-lg p-6 text-left max-w-lg mx-auto mb-8">
+            <h2 class="text-lg font-semibold text-gray-800 mb-3">In the Meantime</h2>
+            <p class="text-gray-700 mb-3">
+                You can add bookmarks by:
+            </p>
+            <ul class="space-y-2 text-gray-700 text-sm">
+                <li class="flex items-start">
+                    <svg class="h-4 w-4 text-gray-500 mr-2 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                    </svg>
+                    <span><strong>Syncing from Diigo</strong> - Import your existing Diigo bookmarks</span>
+                </li>
+                <li class="flex items-start">
+                    <svg class="h-4 w-4 text-gray-500 mr-2 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                    </svg>
+                    <span><strong>CLI Tool</strong> - Use <code class="bg-gray-200 px-1 py-0.5 rounded text-xs">diigo-tagger add</code> command</span>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex gap-4 justify-center">
+            <a href="/" class="inline-flex items-center px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition-colors">
+                <svg class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                </svg>
+                View Bookmarks
+            </a>
+            <a href="/sync" class="inline-flex items-center px-6 py-3 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors">
+                <svg class="h-5 w-5 mr-2 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Sync from Diigo
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

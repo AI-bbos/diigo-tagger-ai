@@ -1,27 +1,32 @@
-# ABOUTME: OpenAI API client for tag generation
-# ABOUTME: Uses GPT-4o-mini with prompt injection detection and error handling
+# ABOUTME: OpenAI API client for tag generation (now wraps LLMRouter)
+# ABOUTME: Backward-compatible wrapper around LLMRouter for multi-provider support
 
 from typing import List
-from openai import OpenAI
+import logging
 
-from ..security import detect_prompt_injection, redact_api_key
+from .llm_router import LLMRouter
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIClient:
     """
-    Client for OpenAI API tag generation.
+    Client for LLM-based tag generation.
 
-    Uses GPT-4o-mini to generate relevant tags from bookmark content.
-    Includes prompt injection detection for security.
+    DEPRECATED: This class now wraps LLMRouter for backward compatibility.
+    New code should use LLMRouter directly for multi-provider support.
+
+    Maintains the same interface (returns List[str]) but uses LLMRouter
+    internally with automatic provider fallback.
     """
 
     def __init__(self, api_key: str | None, model: str = "gpt-4o-mini"):
         """
-        Initialize OpenAI API client.
+        Initialize LLM client.
 
         Args:
             api_key: OpenAI API key for authentication
-            model: Model to use (default: gpt-4o-mini)
+            model: Model to use (default: gpt-4o-mini) - ignored, LLMRouter chooses
 
         Raises:
             ValueError: If API key is missing
@@ -31,13 +36,19 @@ class OpenAIClient:
 
         self.api_key = api_key
         self.model = model
-        self.client = OpenAI(api_key=api_key)
+
+        # Use LLMRouter internally
+        self.router = LLMRouter(openai_api_key=api_key)
+        logger.info("OpenAIClient initialized (using LLMRouter)")
 
     def generate_tags(
         self, title: str, description: str, url: str, max_tags: int = 8
     ) -> List[str]:
         """
-        Generate tags for a bookmark using GPT-4o-mini.
+        Generate tags for a bookmark using LLM.
+
+        Uses LLMRouter internally with automatic provider fallback.
+        Maintains backward compatibility by returning List[str].
 
         Args:
             title: Bookmark title
@@ -51,58 +62,24 @@ class OpenAIClient:
         Raises:
             ValueError: If suspicious input detected (prompt injection)
             Exception: On API errors (rate limit, network errors)
+
+        Note:
+            This method now uses LLMRouter internally for multi-provider support.
+            The full response (including provider, model, fallback status) is logged.
         """
-        # Security: Detect prompt injection attempts
-        combined_input = f"{title} {description} {url}"
-        detection_result = detect_prompt_injection(combined_input)
-
-        if detection_result.is_suspicious:
-            raise ValueError(
-                f"Suspicious input detected. Patterns: {', '.join(detection_result.patterns_detected)}"
-            )
-
-        # Build prompt
-        system_prompt = (
-            "You are a tag generation assistant for bookmark organization. "
-            "Generate relevant, concise tags based on the bookmark content. "
-            "Return ONLY comma-separated tags, no explanations. "
-            "Use lowercase, hyphenated format (e.g., 'web-development', 'python'). "
-            f"Maximum {max_tags} tags."
+        # Use LLMRouter to generate tags
+        result = self.router.generate_tags(
+            title=title,
+            description=description,
+            url=url,
+            max_tags=max_tags
         )
 
-        user_prompt = f"""
-Title: {title}
-Description: {description}
-URL: {url}
+        # Log provider transparency info
+        logger.info(
+            f"Generated {len(result['tags'])} tags using {result['provider']} "
+            f"(model: {result['model']}, fallback: {result['fallback']})"
+        )
 
-Generate relevant tags for this bookmark.
-"""
-
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.3,  # Lower temperature for consistency
-                max_tokens=100,
-            )
-
-            # Parse response
-            content = response.choices[0].message.content.strip()
-
-            # Extract tags from response (handle various formats)
-            # Split by comma and clean up
-            tags = [tag.strip().lower() for tag in content.split(",")]
-            # Filter out empty tags and limit to max_tags
-            tags = [tag for tag in tags if tag][:max_tags]
-
-            return tags
-
-        except Exception as e:
-            # Re-raise with better error message
-            error_msg = str(e)
-            if "rate limit" in error_msg.lower():
-                raise Exception(f"Rate limit exceeded for OpenAI API: {e}")
-            raise
+        # Return just the tags for backward compatibility
+        return result["tags"]

@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Help - Diigo Tagger{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-0">
+    <h1 class="text-3xl font-bold text-gray-900 mb-2">Help Documentation</h1>
+    <p class="text-gray-600 mb-8">Everything you need to know about using Diigo Tagger</p>
+
+    <div class="grid gap-6 md:grid-cols-2">
+        <!-- Getting Started -->
+        <div class="bg-white shadow rounded-lg p-6 hover:shadow-md transition-shadow">
+            <div class="flex items-center mb-3">
+                <svg class="h-6 w-6 text-indigo-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                <h2 class="text-xl font-semibold text-gray-900">Getting Started</h2>
+            </div>
+            <ul class="space-y-2 text-gray-700">
+                <li><a href="/help/display-ids" class="text-indigo-600 hover:text-indigo-800">Display IDs</a> - Short identifiers for bookmarks</li>
+                <li><a href="/help/search-syntax" class="text-indigo-600 hover:text-indigo-800">Search Syntax</a> - Powerful Lucene query language</li>
+                <li><a href="/help/syncing" class="text-indigo-600 hover:text-indigo-800">Syncing from Diigo</a> - Import your bookmarks (Coming Soon)</li>
+            </ul>
+        </div>
+
+        <!-- Features -->
+        <div class="bg-white shadow rounded-lg p-6 hover:shadow-md transition-shadow">
+            <div class="flex items-center mb-3">
+                <svg class="h-6 w-6 text-indigo-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                </svg>
+                <h2 class="text-xl font-semibold text-gray-900">Features</h2>
+            </div>
+            <ul class="space-y-2 text-gray-700">
+                <li><a href="/help/tagging" class="text-indigo-600 hover:text-indigo-800">AI Tagging</a> - Automatic tag generation (Coming Soon)</li>
+                <li><a href="/help/tag-management" class="text-indigo-600 hover:text-indigo-800">Tag Management</a> - Merge and organize tags (Coming Soon)</li>
+                <li><a href="/help/api" class="text-indigo-600 hover:text-indigo-800">API Reference</a> - REST API documentation (Coming Soon)</li>
+            </ul>
+        </div>
+
+        <!-- CLI Usage -->
+        <div class="bg-white shadow rounded-lg p-6 hover:shadow-md transition-shadow">
+            <div class="flex items-center mb-3">
+                <svg class="h-6 w-6 text-indigo-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <h2 class="text-xl font-semibold text-gray-900">CLI Usage</h2>
+            </div>
+            <ul class="space-y-2 text-gray-700">
+                <li><a href="/help/cli-commands" class="text-indigo-600 hover:text-indigo-800">CLI Commands</a> - Command reference (Coming Soon)</li>
+                <li><a href="/help/cli-search" class="text-indigo-600 hover:text-indigo-800">CLI Search</a> - Using search-bookmarks command (Coming Soon)</li>
+            </ul>
+        </div>
+
+        <!-- Advanced -->
+        <div class="bg-white shadow rounded-lg p-6 hover:shadow-md transition-shadow">
+            <div class="flex items-center mb-3">
+                <svg class="h-6 w-6 text-indigo-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <h2 class="text-xl font-semibold text-gray-900">Advanced Topics</h2>
+            </div>
+            <ul class="space-y-2 text-gray-700">
+                <li><a href="/help/architecture" class="text-indigo-600 hover:text-indigo-800">Architecture</a> - System design (Coming Soon)</li>
+                <li><a href="/help/security" class="text-indigo-600 hover:text-indigo-800">Security</a> - Security features (Coming Soon)</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Danger Zone -->
+    <div class="mt-6 bg-red-50 border-4 border-red-500 rounded-lg p-6 shadow-lg">
+        <div class="flex items-start mb-4">
+            <svg class="h-8 w-8 text-red-600 mr-3 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+            </svg>
+            <div>
+                <h2 class="text-2xl font-bold text-red-900 mb-2">⚠️ DANGER ZONE ⚠️</h2>
+                <p class="text-red-800 mb-4">
+                    Advanced database operations that can <strong class="underline">permanently delete</strong> your data.
+                    Only proceed if you know what you're doing!
+                </p>
+                <a
+                    href="/help/database-operations"
+                    class="inline-flex items-center px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold shadow-md transition-all"
+                >
+                    <svg class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" />
+                    </svg>
+                    Database Operations (Backup, Drop, Migrate)
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Links -->
+    <div class="mt-8 bg-indigo-50 border border-indigo-200 rounded-lg p-6">
+        <h3 class="text-lg font-semibold text-indigo-900 mb-3">Quick Links</h3>
+        <div class="grid gap-3 md:grid-cols-3">
+            <a href="/api/docs" target="_blank" class="text-indigo-700 hover:text-indigo-900 font-medium">
+                API Docs (OpenAPI) →
+            </a>
+            <a href="/" class="text-indigo-700 hover:text-indigo-900 font-medium">
+                Back to Bookmarks →
+            </a>
+            <a href="https://github.com/anthropics/claude-code" target="_blank" class="text-indigo-700 hover:text-indigo-900 font-medium">
+                Built with Claude Code →
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

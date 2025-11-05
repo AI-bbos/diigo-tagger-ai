@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Diigo Tagger{% endblock %}</title>
+
+    <!-- Tailwind CSS (CDN for development) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- HTMX (CDN) -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <!-- Custom styles -->
+    <style>
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex">
+                    <!-- Logo/Brand -->
+                    <div class="flex-shrink-0 flex items-center">
+                        <h1 class="text-xl font-bold text-gray-900">
+                            Diigo Tagger
+                        </h1>
+                    </div>
+
+                    <!-- Navigation Links -->
+                    <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+                        <a href="/" class="{% if active_nav == 'bookmarks' %}border-indigo-500 text-gray-900{% else %}border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Bookmarks
+                        </a>
+                        <a href="/tags" class="{% if active_nav == 'tags' %}border-indigo-500 text-gray-900{% else %}border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Tags
+                        </a>
+                        <a href="/graph" class="{% if active_nav == 'graph' %}border-indigo-500 text-gray-900{% else %}border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Interest Graph
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Right side -->
+                <div class="flex items-center space-x-4">
+                    <!-- Help Link -->
+                    <a href="/help" class="inline-flex items-center text-sm font-medium {% if active_nav == 'help' %}text-indigo-600 font-semibold{% else %}text-gray-500 hover:text-gray-700{% endif %}">
+                        <svg class="h-5 w-5 mr-1 {% if active_nav == 'help' %}text-indigo-600{% else %}text-gray-400{% endif %}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Help
+                    </a>
+
+                    <!-- Health Status Indicator -->
+                <div class="flex items-center">
+                    <div id="health-status"
+                         hx-get="/api/health"
+                         hx-trigger="load, every 30s"
+                         hx-swap="innerHTML">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            Checking...
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Global Status Area (shown when needed) -->
+    <div id="global-status" class="hidden">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+            <div id="global-status-content" class="rounded-md p-4">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg id="global-status-icon" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <!-- Icon changes based on type -->
+                        </svg>
+                    </div>
+                    <div class="ml-3 flex-1">
+                        <h3 id="global-status-title" class="text-sm font-medium"></h3>
+                        <div id="global-status-message" class="mt-2 text-sm"></div>
+                    </div>
+                    <div class="ml-auto pl-3">
+                        <div class="-mx-1.5 -my-1.5">
+                            <button onclick="hideGlobalStatus()" class="inline-flex rounded-md p-1.5 focus:outline-none focus:ring-2 focus:ring-offset-2">
+                                <span class="sr-only">Dismiss</span>
+                                <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <!-- Flash Messages -->
+        {% if messages %}
+        <div class="mb-4">
+            {% for message in messages %}
+            <div class="rounded-md bg-{{ message.type }}-50 p-4 mb-2">
+                <div class="flex">
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-{{ message.type }}-800">
+                            {{ message.text }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Page Content -->
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 mt-12">
+        <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            <p class="text-center text-sm text-gray-500">
+                Diigo Tagger - AI-Powered Bookmark Management
+            </p>
+        </div>
+    </footer>
+
+    <!-- HTMX Config -->
+    <script>
+        // Configure HTMX
+        document.body.addEventListener('htmx:configRequest', (event) => {
+            // Add request ID to all HTMX requests
+            event.detail.headers['X-Request-ID'] = crypto.randomUUID();
+        });
+
+        // Handle health status updates
+        document.body.addEventListener('htmx:afterSwap', (event) => {
+            if (event.detail.target.id === 'health-status') {
+                try {
+                    const data = JSON.parse(event.detail.xhr.response);
+                    const status = data.status;
+                    const statusClass = status === 'healthy' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800';
+                    event.detail.target.innerHTML = `
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusClass}">
+                            ${status === 'healthy' ? '✓' : '⚠'} ${status}
+                        </span>
+                    `;
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            }
+        });
+
+        // Global Status Functions
+        const STATUS_TYPES = {
+            error: {
+                bgColor: 'bg-red-50',
+                textColor: 'text-red-800',
+                iconColor: 'text-red-400',
+                buttonColor: 'text-red-500 hover:bg-red-100 focus:ring-red-600',
+                icon: '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />'
+            },
+            warning: {
+                bgColor: 'bg-yellow-50',
+                textColor: 'text-yellow-800',
+                iconColor: 'text-yellow-400',
+                buttonColor: 'text-yellow-500 hover:bg-yellow-100 focus:ring-yellow-600',
+                icon: '<path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />'
+            },
+            info: {
+                bgColor: 'bg-blue-50',
+                textColor: 'text-blue-800',
+                iconColor: 'text-blue-400',
+                buttonColor: 'text-blue-500 hover:bg-blue-100 focus:ring-blue-600',
+                icon: '<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />'
+            },
+            success: {
+                bgColor: 'bg-green-50',
+                textColor: 'text-green-800',
+                iconColor: 'text-green-400',
+                buttonColor: 'text-green-500 hover:bg-green-100 focus:ring-green-600',
+                icon: '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />'
+            }
+        };
+
+        function showGlobalStatus(type, title, message, autoDismiss = false) {
+            const statusDiv = document.getElementById('global-status');
+            const contentDiv = document.getElementById('global-status-content');
+            const iconDiv = document.getElementById('global-status-icon');
+            const titleDiv = document.getElementById('global-status-title');
+            const messageDiv = document.getElementById('global-status-message');
+            const button = contentDiv.querySelector('button');
+
+            const style = STATUS_TYPES[type] || STATUS_TYPES.info;
+
+            // Update styling
+            contentDiv.className = `rounded-md p-4 ${style.bgColor}`;
+            iconDiv.className = `h-5 w-5 ${style.iconColor}`;
+            iconDiv.innerHTML = style.icon;
+            titleDiv.className = `text-sm font-medium ${style.textColor}`;
+            messageDiv.className = `mt-2 text-sm ${style.textColor}`;
+            button.className = `inline-flex rounded-md p-1.5 focus:outline-none focus:ring-2 focus:ring-offset-2 ${style.buttonColor}`;
+
+            // Update content
+            titleDiv.textContent = title;
+            messageDiv.innerHTML = message;
+
+            // Show the status
+            statusDiv.classList.remove('hidden');
+
+            // Auto-dismiss if requested (for non-critical messages)
+            if (autoDismiss) {
+                setTimeout(() => hideGlobalStatus(), 10000); // 10 seconds
+            }
+        }
+
+        function hideGlobalStatus() {
+            document.getElementById('global-status').classList.add('hidden');
+        }
+
+        // Make functions available globally
+        window.showGlobalStatus = showGlobalStatus;
+        window.hideGlobalStatus = hideGlobalStatus;
+    </script>
+
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>
