@@ -231,13 +231,36 @@ document.body.addEventListener('htmx:beforeRequest', function(event) {
                     if (isRateLimit) {
                         // Extract reset time if present
                         const resetMatch = data.error.match(/Next reset at ([^"]+)/);
-                        const resetTime = resetMatch ? resetMatch[1] : 'unknown time';
+                        let resetTimeDisplay = 'unknown time';
+
+                        if (resetMatch) {
+                            try {
+                                // Parse UTC time and convert to local timezone
+                                const utcTime = resetMatch[1].replace(' UTC', '');
+                                const resetDate = new Date(utcTime + ' UTC');
+
+                                // Format in user's local timezone
+                                const options = {
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                    timeZoneName: 'short'
+                                };
+                                resetTimeDisplay = resetDate.toLocaleString(undefined, options);
+                            } catch (e) {
+                                console.error('Failed to parse reset time:', e);
+                                resetTimeDisplay = resetMatch[1];
+                            }
+                        }
 
                         // Show in global status with warning
                         window.showGlobalStatus(
                             'warning',
                             'Diigo API Rate Limit Reached',
-                            `You've reached Diigo's API rate limit. Your limit will reset at <strong>${resetTime}</strong>. ` +
+                            `You've reached Diigo's API rate limit. Your limit will reset at <strong>${resetTimeDisplay}</strong>. ` +
                             `Progress saved: <strong>${data.downloaded}</strong> bookmarks processed, <strong>${data.new_bookmarks}</strong> new, <strong>${data.updated_bookmarks}</strong> updated.`
                         );
                     } else {
