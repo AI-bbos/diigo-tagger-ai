@@ -308,6 +308,15 @@ async def tags_placeholder(request: Request):
     )
 
 
+@app.get("/add", response_class=HTMLResponse)
+async def add_bookmark_placeholder(request: Request):
+    """Placeholder for add bookmark page (Phase 2)."""
+    return templates.TemplateResponse(
+        "add_placeholder.html",
+        {"request": request, "active_nav": "add"}
+    )
+
+
 @app.get("/sync", response_class=HTMLResponse)
 async def sync_page(request: Request):
     """Sync from Diigo page."""
