@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}Sync from Diigo - Diigo Tagger{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto px-4 sm:px-0">
+    <h1 class="text-3xl font-bold text-gray-900 mb-2">Sync from Diigo</h1>
+    <p class="text-gray-600 mb-8">Import bookmarks from your Diigo account</p>
+
+    <!-- Sync Form -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <form id="sync-form" hx-post="/api/sync" hx-target="#sync-result" hx-swap="innerHTML" hx-indicator="#sync-progress">
+            <div class="space-y-4">
+                <!-- Fetch Mode -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Sync Mode
+                    </label>
+                    <div class="space-y-2">
+                        <label class="flex items-center">
+                            <input type="radio" name="mode" value="incremental" checked class="mr-2">
+                            <span class="text-gray-700">Incremental (fetch until 50 new tags found)</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="radio" name="mode" value="full" class="mr-2">
+                            <span class="text-gray-700">Full Sync (fetch all bookmarks)</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="radio" name="mode" value="custom" class="mr-2">
+                            <span class="text-gray-700">Custom count</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Custom Count (hidden by default) -->
+                <div id="custom-count-field" class="hidden">
+                    <label for="count" class="block text-sm font-medium text-gray-700 mb-2">
+                        Number of bookmarks to fetch
+                    </label>
+                    <input
+                        type="number"
+                        id="count"
+                        name="count"
+                        min="1"
+                        max="1000"
+                        value="100"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    />
+                    <p class="mt-1 text-sm text-gray-500">
+                        Maximum: 1000 bookmarks
+                    </p>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="pt-4">
+                    <button
+                        type="submit"
+                        class="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition-colors"
+                    >
+                        <span class="htmx-indicator">
+                            <svg class="inline w-5 h-5 mr-2 animate-spin" viewBox="0 0 24 24" fill="none">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </span>
+                        <span class="htmx-indicator hidden">Syncing...</span>
+                        <span class="default-text">Start Sync</span>
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <!-- Progress Area (shown during sync) -->
+        <div id="sync-progress" class="mt-6 htmx-indicator">
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div class="flex items-start">
+                    <svg class="animate-spin h-5 w-5 text-blue-600 mr-3 mt-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-blue-900 mb-2">Syncing bookmarks...</p>
+                        <div class="grid grid-cols-5 gap-3 text-sm">
+                            <div>
+                                <p class="text-blue-600 text-xs">Downloaded</p>
+                                <p class="text-lg font-bold text-blue-900"><span id="progress-downloaded">0</span></p>
+                            </div>
+                            <div>
+                                <p class="text-green-600 text-xs">New BMs</p>
+                                <p class="text-lg font-bold text-green-900"><span id="progress-new-bookmarks">0</span></p>
+                            </div>
+                            <div>
+                                <p class="text-purple-600 text-xs">Updated BMs</p>
+                                <p class="text-lg font-bold text-purple-900"><span id="progress-updated-bookmarks">0</span></p>
+                            </div>
+                            <div>
+                                <p class="text-teal-600 text-xs">New Tags</p>
+                                <p class="text-lg font-bold text-teal-900"><span id="progress-new-tags">0</span></p>
+                            </div>
+                            <div>
+                                <p class="text-indigo-600 text-xs">Upd Tags</p>
+                                <p class="text-lg font-bold text-indigo-900"><span id="progress-updated-tags">0</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Result Area -->
+        <div id="sync-result" class="mt-6"></div>
+    </div>
+
+    <!-- Info Box -->
+    <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                </svg>
+            </div>
+            <div class="ml-3">
+                <h3 class="text-sm font-medium text-blue-800">About Syncing</h3>
+                <div class="mt-2 text-sm text-blue-700">
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>Idempotent:</strong> Safe to run multiple times</li>
+                        <li><strong>Non-destructive:</strong> Existing bookmarks are updated, never deleted</li>
+                        <li><strong>Smart merging:</strong> Tags from Diigo, LLM, and manual edits are combined</li>
+                        <li><strong>Requires credentials:</strong> Make sure DIIGO_API_KEY, DIIGO_USERNAME, and DIIGO_PASSWORD are set in your .env file</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Link -->
+    <div class="mt-6 text-center">
+        <a href="/help" class="text-indigo-600 hover:text-indigo-800 font-medium">
+            Need help? Visit the Help Center →
+        </a>
+    </div>
+</div>
+
+<script>
+// Show/hide custom count field based on mode selection
+document.querySelectorAll('input[name="mode"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        const customField = document.getElementById('custom-count-field');
+        if (this.value === 'custom') {
+            customField.classList.remove('hidden');
+        } else {
+            customField.classList.add('hidden');
+        }
+    });
+});
+
+let eventSource = null;
+
+// Handle form submission with HTMX
+document.body.addEventListener('htmx:beforeRequest', function(event) {
+    if (event.target.id === 'sync-form') {
+        const button = event.target.querySelector('button[type="submit"]');
+        if (button) {
+            button.querySelector('.default-text').classList.add('hidden');
+            button.querySelector('.htmx-indicator').classList.remove('hidden');
+            button.disabled = true;
+        }
+
+        // Start listening for progress updates via SSE
+        const progressDownloaded = document.getElementById('progress-downloaded');
+        const progressNewBookmarks = document.getElementById('progress-new-bookmarks');
+        const progressUpdatedBookmarks = document.getElementById('progress-updated-bookmarks');
+        const progressNewTags = document.getElementById('progress-new-tags');
+        const progressUpdatedTags = document.getElementById('progress-updated-tags');
+
+        progressDownloaded.textContent = '0';
+        progressNewBookmarks.textContent = '0';
+        progressUpdatedBookmarks.textContent = '0';
+        progressNewTags.textContent = '0';
+        progressUpdatedTags.textContent = '0';
+
+        if (eventSource) {
+            eventSource.close();
+        }
+
+        eventSource = new EventSource('/api/sync/progress');
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            progressDownloaded.textContent = data.downloaded;
+            progressNewBookmarks.textContent = data.new_bookmarks;
+            progressUpdatedBookmarks.textContent = data.updated_bookmarks;
+            progressNewTags.textContent = data.new_tags;
+            progressUpdatedTags.textContent = data.updated_tags;
+        };
+
+        eventSource.onerror = function() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+        };
+    }
+});
+
+document.body.addEventListener('htmx:afterRequest', function(event) {
+    if (event.target.id === 'sync-form') {
+        const button = event.target.querySelector('button[type="submit"]');
+        if (button) {
+            button.querySelector('.default-text').classList.remove('hidden');
+            button.querySelector('.htmx-indicator').classList.add('hidden');
+            button.disabled = false;
+        }
+
+        // Stop listening for progress updates
+        if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+        }
+    }
+});
+</script>
+{% endblock %}

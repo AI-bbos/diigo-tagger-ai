@@ -46,74 +46,141 @@ class BookmarkService:
         self,
         target_new_tags: int,
         fetch_all: bool = False,
-        progress_callback: Optional[Callable[[int, int, int], None]] = None
-    ) -> Tuple[int, int, int]:
+        progress_callback: Optional[Callable[[int, int, int, int, int], None]] = None
+    ) -> Tuple[int, int, int, int, int]:
         """
-        Sync bookmarks from Diigo and update tag database.
+        Sync bookmarks from Diigo and save to database.
 
-        Fetches bookmarks in batches and extracts tags. Stops when target
-        number of NEW tags found or all bookmarks fetched.
+        Fetches bookmarks in batches and saves them along with their tags.
+        Stops when target number of NEW tags found or all bookmarks fetched.
 
         Args:
             target_new_tags: Number of new unique tags to find
             fetch_all: If True, fetch all bookmarks regardless of tag count
-            progress_callback: Optional callback(bookmarks_processed, tags_added, tags_updated)
+            progress_callback: Optional callback(downloaded, new_bookmarks, updated_bookmarks, new_tags, updated_tags)
                              called after each batch
 
         Returns:
-            Tuple of (bookmarks_processed, tags_added, tags_updated)
+            Tuple of (downloaded, new_bookmarks, updated_bookmarks, new_tags, updated_tags)
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         start = 0
         batch_size = 100  # API max per request
 
-        bookmarks_processed = 0
-        tags_added = 0
-        tags_updated = 0
+        downloaded = 0
+        new_bookmarks = 0
+        updated_bookmarks = 0
+        new_tags = 0
+        updated_tags = 0
+
+        logger.info(f"Starting sync: target_new_tags={target_new_tags}, fetch_all={fetch_all}")
 
         while True:
             # Fetch next batch
+            logger.info(f"Fetching batch: start={start}, count={batch_size}")
             batch = self.diigo_client.fetch_bookmarks(count=batch_size, start=start)
+
             if not batch:
+                logger.info(f"No more bookmarks to fetch (batch empty at start={start})")
                 break
 
-            bookmarks_processed += len(batch)
+            logger.info(f"Fetched {len(batch)} bookmarks from Diigo")
+            downloaded += len(batch)
 
-            # Process tags from this batch
-            for bookmark in batch:
-                for tag_name in bookmark.tags:
-                    # Normalize tag name
-                    tag_name = tag_name.strip().lower()
-                    if not tag_name:
-                        continue
+            # Process each bookmark
+            for bookmark_data in batch:
+                # Check if bookmark exists by URL (disable autoflush to prevent premature flushes)
+                with self.session.no_autoflush:
+                    existing = self.session.query(Bookmark).filter_by(url=bookmark_data.url).first()
 
-                    # Get or create tag
-                    tag = self.session.query(Tag).filter_by(name=tag_name).first()
-                    if tag:
-                        tag.count += 1
-                        tags_updated += 1
-                    else:
-                        tag = Tag(name=tag_name, count=1, source="user")
-                        self.session.add(tag)
-                        tags_added += 1
+                # Parse created_at string to datetime if needed
+                from datetime import datetime
+                diigo_created_at = None
+                if bookmark_data.created_at:
+                    try:
+                        # Parse Diigo format: "2015/05/04 05:40:36 +0000"
+                        diigo_created_at = datetime.strptime(bookmark_data.created_at, "%Y/%m/%d %H:%M:%S %z")
+                    except Exception as e:
+                        logger.warning(f"Failed to parse created_at '{bookmark_data.created_at}': {e}")
+
+                if existing:
+                    # Update existing bookmark
+                    existing.title = bookmark_data.title
+                    existing.description = bookmark_data.description
+                    # Note: DiigoBookmark doesn't have shared or updated_at fields
+                    # Don't update tags for existing bookmarks to preserve user modifications
+                    updated_bookmarks += 1
+                    bookmark_obj = existing
+                    logger.debug(f"Updated bookmark: {bookmark_data.url}")
+                else:
+                    # Create new bookmark
+                    bookmark_obj = Bookmark(
+                        display_id=Bookmark.generate_display_id(bookmark_data.url),
+                        url=bookmark_data.url,
+                        title=bookmark_data.title,
+                        description=bookmark_data.description,
+                        diigo_created_at=diigo_created_at
+                    )
+                    self.session.add(bookmark_obj)
+                    new_bookmarks += 1
+                    logger.debug(f"Created new bookmark: {bookmark_data.url}")
+
+                    # Process tags for NEW bookmarks only
+                    bookmark_tags = []
+                    seen_tag_names = set()
+
+                    for tag_name in bookmark_data.tags:
+                        # Normalize tag name
+                        tag_name = tag_name.strip().lower()
+                        if not tag_name:
+                            continue
+
+                        # Skip duplicate tags in the same bookmark
+                        if tag_name in seen_tag_names:
+                            logger.debug(f"Skipping duplicate tag '{tag_name}' for bookmark")
+                            continue
+                        seen_tag_names.add(tag_name)
+
+                        # Get or create tag
+                        with self.session.no_autoflush:
+                            tag = self.session.query(Tag).filter_by(name=tag_name).first()
+
+                        if tag:
+                            updated_tags += 1
+                        else:
+                            tag = Tag(name=tag_name, count=0, source="diigo")
+                            self.session.add(tag)
+                            new_tags += 1
+
+                        bookmark_tags.append(tag)
+
+                    # Associate tags with bookmark
+                    bookmark_obj.tags = bookmark_tags
 
             # Commit this batch
             self.session.commit()
+            logger.info(f"Committed batch: downloaded={downloaded}, new={new_bookmarks}, updated={updated_bookmarks}, new_tags={new_tags}, updated_tags={updated_tags}")
 
             # Call progress callback if provided
             if progress_callback:
-                progress_callback(bookmarks_processed, tags_added, tags_updated)
+                progress_callback(downloaded, new_bookmarks, updated_bookmarks, new_tags, updated_tags)
 
             # Check stopping conditions
-            if not fetch_all and tags_added >= target_new_tags:
+            if not fetch_all and new_tags >= target_new_tags:
+                logger.info(f"Reached target of {target_new_tags} new tags, stopping")
                 break
 
             # If we got less than batch_size, we've reached the end
             if len(batch) < batch_size:
+                logger.info(f"Reached end of bookmarks (batch size {len(batch)} < {batch_size})")
                 break
 
             start += batch_size
 
-        return bookmarks_processed, tags_added, tags_updated
+        logger.info(f"Sync complete: downloaded={downloaded}, new={new_bookmarks}, updated={updated_bookmarks}, new_tags={new_tags}, updated_tags={updated_tags}")
+        return downloaded, new_bookmarks, updated_bookmarks, new_tags, updated_tags
 
     def add_bookmark(
         self,
