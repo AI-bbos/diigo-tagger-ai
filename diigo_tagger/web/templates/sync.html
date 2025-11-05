@@ -71,7 +71,7 @@
         </form>
 
         <!-- Progress Area (shown during sync) -->
-        <div id="sync-progress" class="mt-6 htmx-indicator">
+        <div id="sync-progress" class="mt-6 hidden">
             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <div class="flex items-start">
                     <svg class="animate-spin h-5 w-5 text-blue-600 mr-3 mt-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -169,6 +169,9 @@ document.body.addEventListener('htmx:beforeRequest', function(event) {
         // Clear result area
         document.getElementById('sync-result').innerHTML = '';
 
+        // Show progress area
+        document.getElementById('sync-progress').classList.remove('hidden');
+
         // Reset progress counters
         const progressDownloaded = document.getElementById('progress-downloaded');
         const progressNewBookmarks = document.getElementById('progress-new-bookmarks');
@@ -208,6 +211,9 @@ document.body.addEventListener('htmx:beforeRequest', function(event) {
                 // Close SSE connection
                 eventSource.close();
                 eventSource = null;
+
+                // Hide progress area
+                document.getElementById('sync-progress').classList.add('hidden');
 
                 // Re-enable button
                 if (button) {
