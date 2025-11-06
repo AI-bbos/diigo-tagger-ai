@@ -1,15 +1,29 @@
-# ABOUTME: Bookmark API endpoints for listing and searching
+# ABOUTME: Bookmark API endpoints for listing, searching, and adding bookmarks
 # ABOUTME: Thin layer that calls bookmark service for business logic
 
 import logging
-from typing import Optional
+import os
+from typing import Optional, Union
 
 from fastapi import APIRouter, Query, HTTPException
 
 from ...db import get_session
 from ...models import Bookmark as BookmarkModel
 from ...services.bookmark_service import BookmarkService
-from ..schemas.bookmark import BookmarkResponse, BookmarkListResponse, PaginationInfo
+from ...clients.diigo_client import DiigoClient
+from ...clients.openai_client import OpenAIClient
+from ..schemas.bookmark import (
+    BookmarkResponse,
+    BookmarkListResponse,
+    PaginationInfo,
+    AddBookmarkRequest,
+    AddBookmarkSuccessResponse,
+    ConflictResponse,
+    ResolveConflictRequest,
+    LLMSuggestions,
+    ExistingBookmark,
+    NewBookmark
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +125,225 @@ async def get_bookmark(display_id: str):
             tags=tags,
             created_at=bookmark.created_at,
             updated_at=bookmark.updated_at
+        )
+
+    finally:
+        session.close()
+
+
+@router.post("/bookmarks", response_model=Union[AddBookmarkSuccessResponse, ConflictResponse])
+async def add_bookmark(request: AddBookmarkRequest):
+    """
+    Add a new bookmark to Diigo.
+
+    If bookmark already exists, returns conflict information for user to decide.
+    Otherwise, creates bookmark with LLM-powered defaults.
+
+    Returns:
+        - AddBookmarkSuccessResponse: Bookmark created successfully
+        - ConflictResponse: Bookmark already exists (conflict detected)
+    """
+    session = get_session()
+
+    try:
+        # Get credentials from environment
+        api_key = os.getenv("DIIGO_API_KEY")
+        username = os.getenv("DIIGO_USERNAME")
+        password = os.getenv("DIIGO_PASSWORD")
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+
+        if not all([api_key, username, password]):
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "detail": "Missing Diigo credentials. Please configure DIIGO_API_KEY, DIIGO_USERNAME, and DIIGO_PASSWORD",
+                    "error_code": "MISSING_CREDENTIALS"
+                }
+            )
+
+        # Create clients
+        diigo_client = DiigoClient(api_key=api_key, username=username, password=password)
+        openai_client = OpenAIClient(api_key=openai_api_key) if openai_api_key else None
+
+        # Create service
+        service = BookmarkService(
+            session=session,
+            diigo_client=diigo_client,
+            openai_client=openai_client
+        )
+
+        # Call service layer
+        try:
+            result = service.add_bookmark(
+                url=request.url,
+                title=request.title,
+                description=request.description,
+                tags=request.tags,
+                shared=request.shared
+            )
+        except ValueError as e:
+            # Diigo API error
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "detail": str(e),
+                    "error_code": "DIIGO_API_ERROR"
+                }
+            )
+
+        # Check if conflict detected
+        if result.get("conflict"):
+            return ConflictResponse(
+                conflict=True,
+                url=result["url"],
+                existing=ExistingBookmark(**result["existing"]),
+                new=NewBookmark(**result["new"]),
+                llm_suggestions=LLMSuggestions(**result["llm_suggestions"])
+            )
+
+        # Check if no changes needed
+        if result.get("no_changes"):
+            return AddBookmarkSuccessResponse(
+                url=result["url"],
+                title=result["title"],
+                description=result["description"],
+                tags=result["tags"],
+                display_id=result["display_id"],
+                action="no_changes"
+            )
+
+        # Success - bookmark created
+        llm_suggestions = None
+        if result.get("llm_suggestions"):
+            llm_suggestions = LLMSuggestions(**result["llm_suggestions"])
+
+        return AddBookmarkSuccessResponse(
+            url=result["url"],
+            title=result["title"],
+            description=result["description"],
+            tags=result["tags"],
+            display_id=result["display_id"],
+            llm_suggestions=llm_suggestions,
+            action=result.get("action")
+        )
+
+    finally:
+        session.close()
+
+
+@router.post("/bookmarks/resolve", response_model=AddBookmarkSuccessResponse)
+async def resolve_bookmark_conflict(request: ResolveConflictRequest):
+    """
+    Resolve bookmark conflict with 3-character resolution code.
+
+    Resolution code format (3 characters):
+    - Position 0 (title): n=new, o=original, s=smart
+    - Position 1 (description): n=new, o=original, s=smart
+    - Position 2 (tags): n=new, o=original, s=smart
+
+    Examples:
+    - 'nns': new title, new description, smart merge tags
+    - 'ooo': keep all original
+    - 'nnn': replace all with new
+    - 'sss': smart merge all (prefer user input, else keep original)
+    """
+    session = get_session()
+
+    try:
+        # Validate resolution code format
+        if len(request.resolution) != 3:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "detail": "Resolution code must be exactly 3 characters",
+                    "error_code": "INVALID_RESOLUTION_CODE",
+                    "resolution": request.resolution
+                }
+            )
+
+        # Validate characters
+        valid_chars = {'n', 'o', 's'}
+        for char in request.resolution:
+            if char not in valid_chars:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "detail": f"Invalid character '{char}' in resolution code. Must be one of: n, o, s",
+                        "error_code": "INVALID_RESOLUTION_CHAR",
+                        "resolution": request.resolution
+                    }
+                )
+
+        # Get credentials from environment
+        api_key = os.getenv("DIIGO_API_KEY")
+        username = os.getenv("DIIGO_USERNAME")
+        password = os.getenv("DIIGO_PASSWORD")
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+
+        if not all([api_key, username, password]):
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "detail": "Missing Diigo credentials",
+                    "error_code": "MISSING_CREDENTIALS"
+                }
+            )
+
+        # Create clients
+        diigo_client = DiigoClient(api_key=api_key, username=username, password=password)
+        openai_client = OpenAIClient(api_key=openai_api_key) if openai_api_key else None
+
+        # Create service
+        service = BookmarkService(
+            session=session,
+            diigo_client=diigo_client,
+            openai_client=openai_client
+        )
+
+        # Call service layer with conflict resolution
+        try:
+            result = service.add_bookmark(
+                url=request.url,
+                title=request.title,
+                description=request.description,
+                tags=request.tags,
+                shared=request.shared,
+                conflict_resolution=request.resolution
+            )
+        except ValueError as e:
+            # Diigo API error
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "detail": str(e),
+                    "error_code": "DIIGO_API_ERROR"
+                }
+            )
+
+        # Should not get conflict response when resolution provided
+        if result.get("conflict"):
+            logger.error(f"Unexpected conflict response with resolution: {request.resolution}")
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "detail": "Unexpected conflict after resolution",
+                    "error_code": "UNEXPECTED_CONFLICT"
+                }
+            )
+
+        # Success
+        llm_suggestions = None
+        if result.get("llm_suggestions"):
+            llm_suggestions = LLMSuggestions(**result["llm_suggestions"])
+
+        return AddBookmarkSuccessResponse(
+            url=result["url"],
+            title=result["title"],
+            description=result["description"],
+            tags=result["tags"],
+            display_id=result["display_id"],
+            llm_suggestions=llm_suggestions,
+            action=result.get("action")
         )
 
     finally:

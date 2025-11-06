@@ -309,10 +309,10 @@ async def tags_placeholder(request: Request):
 
 
 @app.get("/add", response_class=HTMLResponse)
-async def add_bookmark_placeholder(request: Request):
-    """Placeholder for add bookmark page (Phase 2)."""
+async def add_bookmark_page(request: Request):
+    """Add bookmark page."""
     return templates.TemplateResponse(
-        "add_placeholder.html",
+        "add_bookmark.html",
         {"request": request, "active_nav": "add"}
     )
 
