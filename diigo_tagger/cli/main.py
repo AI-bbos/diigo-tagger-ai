@@ -2,6 +2,7 @@
 # ABOUTME: Click-based interface for sync, search, merge, generate, and list operations
 
 import os
+import subprocess
 import click
 from pathlib import Path
 from typing import Optional
@@ -756,6 +757,20 @@ def _display_bookmark(bookmark, verbose: bool):
         if tag_names:
             click.echo(f"      Tags: {tags_str}")
         click.echo()
+
+
+@cli.command()
+@click.option("--port", default=8000, type=click.IntRange(1, 65535), help="Port to run on (default: 8000)")
+def dev(port: int):
+    """Start local development server."""
+    click.echo(f"Starting development server at http://localhost:{port}")
+    click.echo("Press Ctrl+C to stop\n")
+    subprocess.run([
+        "uvicorn",
+        "diigo_tagger.api.main:app",
+        "--reload",
+        "--port", str(port),
+    ])
 
 
 if __name__ == "__main__":

@@ -27,14 +27,12 @@ class TestGroupedHelp:
         result = runner.invoke(cli, ["--help"])
         assert "Tags:" in result.output
 
-    @pytest.mark.skip(reason="Server commands added in Task 2")
     def test_help_shows_server_group(self):
         """Should show Server group header."""
         runner = CliRunner()
         result = runner.invoke(cli, ["--help"])
         assert "Server:" in result.output
 
-    @pytest.mark.skip(reason="Server commands added in Task 2")
     def test_help_group_order(self):
         """Should show groups in order: Bookmarks, Database, Tags, Server."""
         runner = CliRunner()
