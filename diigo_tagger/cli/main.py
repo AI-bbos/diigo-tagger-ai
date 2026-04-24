@@ -811,5 +811,17 @@ def build():
     click.echo(f"  vercel.json       — Vercel routing config")
 
 
+@cli.command()
+def deploy():
+    """Deploy preview to Vercel."""
+    click.echo("Vercel deployment not yet configured. Database migration to Turso required first.")
+
+
+@cli.command()
+def promote():
+    """Promote latest preview to production."""
+    click.echo("Vercel deployment not yet configured. Database migration to Turso required first.")
+
+
 if __name__ == "__main__":
     cli()

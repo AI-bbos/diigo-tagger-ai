@@ -108,3 +108,41 @@ class TestBuildCommand:
         assert "requirements.txt" in result.output
         assert "api/index.py" in result.output
         assert "vercel.json" in result.output
+
+
+class TestDeployCommand:
+    """Test the deploy command (scaffolded)."""
+
+    def test_deploy_shows_not_configured(self):
+        """Should print not-configured message."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["deploy"])
+
+        assert result.exit_code == 0
+        assert "not yet configured" in result.output.lower()
+
+    def test_deploy_mentions_turso(self):
+        """Should mention database migration requirement."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["deploy"])
+
+        assert "Turso" in result.output
+
+
+class TestPromoteCommand:
+    """Test the promote command (scaffolded)."""
+
+    def test_promote_shows_not_configured(self):
+        """Should print not-configured message."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["promote"])
+
+        assert result.exit_code == 0
+        assert "not yet configured" in result.output.lower()
+
+    def test_promote_mentions_turso(self):
+        """Should mention database migration requirement."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["promote"])
+
+        assert "Turso" in result.output
