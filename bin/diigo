@@ -1,0 +1,6 @@
+#!/bin/bash
+# ABOUTME: CLI wrapper for Diigo Tagger AI — delegates to poetry run diigo
+# ABOUTME: Installed by scripts/install.sh, __DIIGO_HOME__ replaced at install time
+export DIIGO_HOME="__DIIGO_HOME__"
+cd "$DIIGO_HOME" || { echo "Error: DIIGO_HOME directory not found: $DIIGO_HOME"; exit 1; }
+poetry run diigo "$@"
