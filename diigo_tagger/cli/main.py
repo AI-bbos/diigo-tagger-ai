@@ -1,5 +1,5 @@
 # ABOUTME: Main CLI commands for Diigo Tagger AI
-# ABOUTME: Click-based interface for sync, search, merge, generate, and list operations
+# ABOUTME: Click-based interface for bookmark management, tagging, and server operations
 
 import json
 import os
