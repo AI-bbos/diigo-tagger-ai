@@ -1,97 +1,112 @@
 # Diigo Tagger AI
 
-AI-powered CLI tool for Diigo bookmark tagging with semantic search.
+AI-powered bookmark management tool with CLI and web UI. Automatically generates tags using LLMs, provides full-text and semantic search, and syncs with your Diigo account.
 
 ## Features
 
-- 🤖 Automated tag generation using GPT-4o-mini
-- 🔍 Wildcard tag search with SQLite FTS5
-- 🧠 Semantic tag search with embeddings (requires pre-stored embeddings)
-- 📊 Tag database sync from Diigo bookmarks
-- 🔀 Tag merge for duplicate cleanup (local database only)
-- 🔒 Security hardening (credential protection, API key redaction, prompt injection detection)
-
-## Installation
-
-```bash
-pip install diigo-tagger-ai
-```
+- **AI-powered tagging** — generate tags using OpenAI, Anthropic, or Google LLMs
+- **Full-text search** — Lucene query syntax powered by SQLite FTS5
+- **Semantic search** — find similar tags using sentence-transformer embeddings
+- **Web UI** — browse, search, add bookmarks with HTMX-powered interface
+- **Diigo sync** — import bookmarks with real-time progress streaming
+- **Conflict resolution** — detect duplicates and merge intelligently
+- **URL metadata extraction** — auto-fetch titles and descriptions (including YouTube)
+- **Security hardened** — API key redaction, prompt injection detection, rate limiting
 
 ## Quick Start
 
-### 1. Set up environment variables
-
-Create a `.env` file:
+### 1. Install dependencies
 
 ```bash
-DIIGO_API_KEY=your_diigo_api_key
-OPENAI_API_KEY=sk-your_openai_key
+git clone https://github.com/AI-bbos/diigo-tagger-ai.git
+cd diigo-tagger-ai
+poetry install
 ```
 
-### 2. Initialize database
+### 2. Configure environment
 
 ```bash
-diigo init
+cp .env.example .env
+# Edit .env with your API keys:
+#   DIIGO_API_KEY, DIIGO_USERNAME, DIIGO_PASSWORD
+#   OPENAI_API_KEY (or ANTHROPIC_API_KEY, GOOGLE_API_KEY)
 ```
 
-### 3. Sync tags from Diigo
+### 3. Initialize database
 
 ```bash
-diigo sync --count 100
+poetry run diigo init
 ```
 
-### 4. Generate tag suggestions
+### 4. Install CLI wrapper (optional)
 
 ```bash
-diigo generate --title "Article Title" --url "https://example.com/article"
+./scripts/install.sh
+# Installs `diigo` command to ~/bin (or custom directory)
 ```
 
-**Note**: v1.0 generates tag suggestions only. Tags are NOT automatically saved to Diigo.
+After installing, use `diigo` directly instead of `poetry run diigo`.
 
-### 5. Search tags
+### 5. Start the web UI
 
 ```bash
-# Wildcard search
-diigo search "*python*"
+diigo dev
+# Opens at http://localhost:8000
+```
 
-# Semantic search (requires embeddings)
-diigo search "machine learning" --semantic
+Or use the CLI directly:
+
+```bash
+diigo sync --count 100        # Import bookmarks from Diigo
+diigo search "*python*"       # Search tags
+diigo add --url https://...   # Add a bookmark with AI tagging
 ```
 
 ## Commands
 
-- `diigo init` - Initialize database
-- `diigo sync` - Sync bookmarks from Diigo
-- `diigo search` - Search tags (wildcard or semantic)
-- `diigo merge` - Merge duplicate tags
-- `diigo generate` - Generate tag suggestions with AI
-- `diigo list` - List all tags
-
-For detailed documentation, see [User Documentation](docs/features/diigo-tagger-ai/05-user-documentation.md)
-
-## Development
-
-```bash
-# Clone repository
-git clone https://github.com/yourusername/diigo-tagger-ai.git
-cd diigo-tagger-ai
-
-# Install dependencies
-poetry install
-
-# Run tests
-poetry run pytest
-
-# Run CLI
-poetry run diigo --help
 ```
+Bookmarks:
+  add               Add bookmark with LLM-powered tagging and conflict resolution
+  lookup            Look up bookmarks by URL or display ID
+  search            Search tags (wildcard or semantic similarity)
+  search-bookmarks  Search bookmarks using Lucene query syntax
+  sync              Sync bookmarks from Diigo
+
+Database:
+  init              Initialize database with schema
+
+Tags:
+  generate          Generate tag suggestions using AI
+  list              List all tags in the database
+  merge             Merge multiple tags into one
+
+Server:
+  dev               Start local development server
+  build             Prepare project for Vercel deployment
+  deploy            Deploy preview to Vercel (not yet configured)
+  promote           Promote latest preview to production (not yet configured)
+```
+
+Run `diigo <command> --help` for detailed options on any command.
+
+## Web UI
+
+The web interface provides:
+
+- **Bookmark search** — full-text search with Lucene syntax (`title:python AND tags:tutorial`)
+- **Add bookmarks** — form with URL metadata auto-fetch, LLM tag suggestions, and conflict resolution
+- **Diigo sync** — import bookmarks with real-time SSE progress streaming
+- **Help pages** — search syntax reference, database operations guide
+
+Start with `diigo dev` (default port 8000) or `diigo dev --port 3000`.
 
 ## Documentation
 
-- [User Guide](docs/features/diigo-tagger-ai/05-user-documentation.md)
-- [Architecture](docs/features/diigo-tagger-ai/02-architecture-design.md)
+- [User Guide](docs/USER-GUIDE.md)
+- [Developer Guide](docs/DEVELOPER-GUIDE.md)
+- [Architecture Design](docs/features/diigo-tagger-ai/02-architecture-design.md)
+- [REST API Design](docs/plans/REST_API_DESIGN.md)
 - [Security Audit](docs/features/diigo-tagger-ai/04-security-audit.md)
-- [Test Plan](docs/features/diigo-tagger-ai/06-test-plan.md)
 
 ## License
 
