@@ -45,3 +45,66 @@ class TestDevCommand:
         result = runner.invoke(cli, ["dev"])
 
         assert "http://localhost:8000" in result.output
+
+
+class TestBuildCommand:
+    """Test the build command for Vercel deployment preparation."""
+
+    @patch("diigo_tagger.cli.main.subprocess.run")
+    def test_build_exports_requirements(self, mock_run):
+        """Should run poetry export to create requirements.txt."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            os.environ["DIIGO_HOME"] = os.getcwd()
+            result = runner.invoke(cli, ["build"])
+            del os.environ["DIIGO_HOME"]
+
+        mock_run.assert_called_once()
+        cmd = mock_run.call_args[0][0]
+        assert "poetry" in cmd
+        assert "export" in cmd
+
+    @patch("diigo_tagger.cli.main.subprocess.run")
+    def test_build_creates_api_index(self, mock_run):
+        """Should create api/index.py entry point."""
+        mock_run.return_value = type("Result", (), {"returncode": 0})()
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            os.environ["DIIGO_HOME"] = os.getcwd()
+            result = runner.invoke(cli, ["build"])
+            del os.environ["DIIGO_HOME"]
+
+            assert os.path.exists("api/index.py")
+            with open("api/index.py") as f:
+                content = f.read()
+            assert "from diigo_tagger.api.main import app" in content
+
+    @patch("diigo_tagger.cli.main.subprocess.run")
+    def test_build_creates_vercel_json(self, mock_run):
+        """Should create vercel.json config."""
+        mock_run.return_value = type("Result", (), {"returncode": 0})()
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            os.environ["DIIGO_HOME"] = os.getcwd()
+            result = runner.invoke(cli, ["build"])
+            del os.environ["DIIGO_HOME"]
+
+            assert os.path.exists("vercel.json")
+            with open("vercel.json") as f:
+                config = json.load(f)
+            assert "builds" in config
+            assert "routes" in config
+
+    @patch("diigo_tagger.cli.main.subprocess.run")
+    def test_build_prints_summary(self, mock_run):
+        """Should print summary of generated files."""
+        mock_run.return_value = type("Result", (), {"returncode": 0})()
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            os.environ["DIIGO_HOME"] = os.getcwd()
+            result = runner.invoke(cli, ["build"])
+            del os.environ["DIIGO_HOME"]
+
+        assert "requirements.txt" in result.output
+        assert "api/index.py" in result.output
+        assert "vercel.json" in result.output

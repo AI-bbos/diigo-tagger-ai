@@ -1,6 +1,7 @@
 # ABOUTME: Main CLI commands for Diigo Tagger AI
 # ABOUTME: Click-based interface for sync, search, merge, generate, and list operations
 
+import json
 import os
 import subprocess
 import click
@@ -724,8 +725,6 @@ def _display_lookup_results(result: dict, verbose: bool):
 
 def _display_bookmark(bookmark, verbose: bool):
     """Display a single bookmark (brief or verbose)."""
-    import json
-
     # Get tags as list of strings
     tag_names = [tag.name for tag in bookmark.tags] if bookmark.tags else []
 
@@ -771,6 +770,45 @@ def dev(port: int):
         "--reload",
         "--port", str(port),
     ])
+
+
+@cli.command()
+def build():
+    """Prepare project for Vercel deployment."""
+    project_dir = Path(os.environ.get("DIIGO_HOME", Path(__file__).parent.parent.parent))
+
+    # Export requirements.txt
+    click.echo("Exporting requirements.txt from Poetry...")
+    subprocess.run(
+        ["poetry", "export", "-f", "requirements.txt",
+         "--output", str(project_dir / "requirements.txt"),
+         "--without-hashes"],
+        cwd=str(project_dir),
+    )
+
+    # Create api/index.py
+    api_dir = project_dir / "api"
+    api_dir.mkdir(exist_ok=True)
+    index_file = api_dir / "index.py"
+    index_file.write_text(
+        '# ABOUTME: Vercel serverless function entry point\n'
+        '# ABOUTME: Imports the FastAPI app for Vercel to serve\n'
+        '\n'
+        'from diigo_tagger.api.main import app  # noqa: F401\n'
+    )
+
+    # Create vercel.json
+    vercel_config = {
+        "builds": [{"src": "api/index.py", "use": "@vercel/python"}],
+        "routes": [{"src": "/(.*)", "dest": "api/index.py"}],
+    }
+    vercel_file = project_dir / "vercel.json"
+    vercel_file.write_text(json.dumps(vercel_config, indent=2) + "\n")
+
+    click.echo("\nBuild complete:")
+    click.echo(f"  requirements.txt  — exported from Poetry")
+    click.echo(f"  api/index.py      — Vercel entry point")
+    click.echo(f"  vercel.json       — Vercel routing config")
 
 
 if __name__ == "__main__":
