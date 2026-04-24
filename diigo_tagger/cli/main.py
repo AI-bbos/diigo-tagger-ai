@@ -84,24 +84,71 @@ def handle_cli_errors(func):
     return wrapper
 
 
+# Group ordering for --help display
+COMMAND_GROUPS = ["Bookmarks", "Database", "Tags", "Server"]
+
+# Map each command name to its group
+COMMAND_GROUP_MAP = {
+    "add": "Bookmarks",
+    "lookup": "Bookmarks",
+    "search": "Bookmarks",
+    "search-bookmarks": "Bookmarks",
+    "sync": "Bookmarks",
+    "init": "Database",
+    "generate": "Tags",
+    "list": "Tags",
+    "merge": "Tags",
+    "dev": "Server",
+    "build": "Server",
+    "deploy": "Server",
+    "promote": "Server",
+}
+
+
 class HelpfulGroup(click.Group):
     """
-    Custom Click Group that shows available commands on error.
+    Custom Click Group with grouped help output and helpful error messages.
 
-    When user provides invalid options at the top level,
-    shows helpful message with available commands instead of
-    just "No such option".
+    Commands are organized into labeled sections (Bookmarks, Database,
+    Tags, Server) in the --help output. Invalid options trigger suggestions
+    for the correct subcommand.
     """
+
+    def format_commands(self, ctx, formatter):
+        """Override to display commands in labeled groups."""
+        commands_by_group = {}
+        for group_name in COMMAND_GROUPS:
+            commands_by_group[group_name] = []
+
+        for cmd_name in self.list_commands(ctx):
+            cmd = self.get_command(ctx, cmd_name)
+            if cmd is None or cmd.hidden:
+                continue
+            help_text = cmd.get_short_help_str(limit=150)
+            group_name = COMMAND_GROUP_MAP.get(cmd_name, "Other")
+            if group_name not in commands_by_group:
+                commands_by_group[group_name] = []
+            commands_by_group[group_name].append((cmd_name, help_text))
+
+        for group_name in COMMAND_GROUPS:
+            cmds = commands_by_group.get(group_name, [])
+            if not cmds:
+                continue
+            with formatter.section(group_name):
+                formatter.write_dl(sorted(cmds))
+
+        ungrouped = commands_by_group.get("Other", [])
+        if ungrouped:
+            with formatter.section("Other"):
+                formatter.write_dl(sorted(ungrouped))
 
     def parse_args(self, ctx, args):
         """Override to provide helpful error messages."""
         try:
             return super().parse_args(ctx, args)
         except click.exceptions.NoSuchOption as e:
-            # User provided an option that doesn't exist at this level
             click.echo(f"Error: {e.message}\n", err=True)
 
-            # Suggest likely command based on the option
             option_name = e.option_name
             suggestion = None
             if option_name == '--url':
