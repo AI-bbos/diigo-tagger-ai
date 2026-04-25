@@ -8,18 +8,12 @@ import click
 from pathlib import Path
 from typing import Optional
 from contextlib import contextmanager
-from dotenv import load_dotenv
 
-from ..db import init_db, get_session
-from ..models import Tag
-from ..clients.diigo_client import DiigoClient
-from ..clients.openai_client import OpenAIClient
-from ..services.tag_reconciliation import TagReconciliationService
-from ..services.bookmark_service import BookmarkService
-from ..services.tag_service import TagService
 
-# Load environment variables from .env file
-load_dotenv()
+def _load_env():
+    """Load environment variables from .env file on first use."""
+    from dotenv import load_dotenv
+    load_dotenv()
 
 
 @contextmanager
@@ -40,6 +34,8 @@ def db_session_manager(db_path: Optional[str] = None):
         >>> with db_session_manager() as session:
         ...     tags = session.query(Tag).all()
     """
+    _load_env()
+    from ..db import get_session
     db_path_obj = Path(db_path) if db_path else None
     session = get_session(db_path_obj)
     try:
@@ -181,6 +177,8 @@ def cli():
 @click.option("--db-path", type=click.Path(), help="Path to database file")
 def init(db_path: Optional[str]):
     """Initialize database with schema."""
+    _load_env()
+    from ..db import init_db
     db_path_obj = Path(db_path) if db_path else None
 
     try:
@@ -207,6 +205,7 @@ def sync(fetch_all: bool, count: int, db_path: Optional[str]):
 
     Note: Existing tags get their counts updated but don't count toward --count target.
     """
+    _load_env()
     # Get credentials from environment
     api_key = os.getenv("DIIGO_API_KEY")
     username = os.getenv("DIIGO_USERNAME")
@@ -225,6 +224,7 @@ def sync(fetch_all: bool, count: int, db_path: Optional[str]):
         raise click.Abort()
 
     # Initialize Diigo client
+    from ..clients.diigo_client import DiigoClient
     client = DiigoClient(api_key=api_key, username=username, password=password)
 
     # Display starting message
@@ -238,6 +238,7 @@ def sync(fetch_all: bool, count: int, db_path: Optional[str]):
         click.echo(f"  Processed {bookmarks_processed} bookmarks, found {tags_added} new tags, updated {tags_updated} existing tags")
 
     # Use service to sync
+    from ..services.bookmark_service import BookmarkService
     with db_session_manager(db_path) as session:
         service = BookmarkService(session, client)
         bookmarks_processed, tags_added, tags_updated = service.sync(
@@ -274,6 +275,7 @@ def search(query: str, semantic: bool, threshold: float, limit: int, db_path: Op
         click.echo(f"Searching for tags matching '{query}'...")
 
     # Use service to search
+    from ..services.tag_reconciliation import TagReconciliationService
     with db_session_manager(db_path) as session:
         service = TagReconciliationService(session)
         results = service.search_tags(
@@ -303,6 +305,7 @@ def merge(source: tuple, target: str, db_path: Optional[str]):
         click.echo("✗ Error: Must specify at least one --source tag", err=True)
         raise click.Abort()
 
+    from ..services.tag_reconciliation import TagReconciliationService
     with db_session_manager(db_path) as session:
         service = TagReconciliationService(session)
         click.echo(f"Merging {list(source)} → '{target}'...")
@@ -319,6 +322,7 @@ def merge(source: tuple, target: str, db_path: Optional[str]):
 @handle_cli_errors
 def generate(title: str, description: str, url: str, max_tags: int, db_path: Optional[str]):
     """Generate tag suggestions using AI (GPT-4o-mini)."""
+    _load_env()
     # Get API key from environment
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -326,9 +330,11 @@ def generate(title: str, description: str, url: str, max_tags: int, db_path: Opt
         raise click.Abort()
 
     # Initialize OpenAI client
+    from ..clients.openai_client import OpenAIClient
     client = OpenAIClient(api_key=api_key)
 
     # Use service to generate tags
+    from ..services.tag_service import TagService
     click.echo(f"Generating tags for: {title}")
     with db_session_manager(db_path) as session:
         service = TagService(session, client)
@@ -352,6 +358,7 @@ def generate(title: str, description: str, url: str, max_tags: int, db_path: Opt
 @handle_cli_errors
 def list(limit: int, source: Optional[str], sort: str, db_path: Optional[str]):
     """List all tags in the database."""
+    from ..services.tag_service import TagService
     with db_session_manager(db_path) as session:
         service = TagService(session)
         tags = service.list_tags(limit=limit, source=source, sort_by=sort)
@@ -392,6 +399,7 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
 
     Smart merge: combines tags from both, prefers user-provided title/description.
     """
+    _load_env()
     # Get credentials from environment
     diigo_api_key = os.getenv("DIIGO_API_KEY")
     diigo_username = os.getenv("DIIGO_USERNAME")
@@ -403,6 +411,8 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
         raise click.Abort()
 
     # Initialize clients
+    from ..clients.diigo_client import DiigoClient
+    from ..clients.openai_client import OpenAIClient
     diigo_client = DiigoClient(api_key=diigo_api_key, username=diigo_username, password=diigo_password)
     openai_client = OpenAIClient(api_key=openai_api_key) if openai_api_key else None
 
@@ -413,6 +423,7 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
     tag_list = [t.strip() for t in tags.split(',')] if tags else None
 
     # Use service to add bookmark
+    from ..services.bookmark_service import BookmarkService
     click.echo(f"Adding bookmark: {url}")
     with db_session_manager(db_path) as session:
         service = BookmarkService(session, diigo_client, openai_client)
@@ -575,6 +586,7 @@ def lookup(identifiers: tuple, url: Optional[str], verbose: bool, db_path: Optio
     Brief mode shows: display_id, URL, title, tags, similar count
     Verbose mode shows: all fields including description, groups, outlines, dates
     """
+    _load_env()
     # Get credentials
     diigo_api_key = os.getenv("DIIGO_API_KEY")
     diigo_username = os.getenv("DIIGO_USERNAME")
@@ -584,6 +596,7 @@ def lookup(identifiers: tuple, url: Optional[str], verbose: bool, db_path: Optio
         click.echo("✗ Error: DIIGO_API_KEY, DIIGO_USERNAME, and DIIGO_PASSWORD must be set", err=True)
         raise click.Abort()
 
+    from ..clients.diigo_client import DiigoClient
     diigo_client = DiigoClient(api_key=diigo_api_key, username=diigo_username, password=diigo_password)
 
     # Build identifier list
@@ -594,6 +607,7 @@ def lookup(identifiers: tuple, url: Optional[str], verbose: bool, db_path: Optio
         raise click.Abort()
 
     # Use service to lookup all identifiers
+    from ..services.bookmark_service import BookmarkService
     with db_session_manager(db_path) as session:
         service = BookmarkService(session, diigo_client)
         results = service.lookup_by_identifiers(identifier_list)
@@ -642,6 +656,7 @@ def search_bookmarks(query: Optional[str], page: int, limit: int, sort: str, ver
       diigo search-bookmarks "(title:python OR title:javascript) AND tags:tutorial"
       diigo search-bookmarks --page 2 --limit 20 --sort title_asc
     """
+    from ..services.bookmark_service import BookmarkService
     with db_session_manager(db_path) as session:
         # Create service (no Diigo client needed for search)
         service = BookmarkService(session=session)

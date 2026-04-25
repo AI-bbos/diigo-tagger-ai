@@ -11,7 +11,7 @@ from diigo_tagger.cli.main import cli
 class TestCLIInit:
     """Test database initialization command."""
 
-    @patch("diigo_tagger.cli.main.init_db")
+    @patch("diigo_tagger.db.init_db")
     def test_init_creates_database(self, mock_init_db):
         """Should initialize database with default path."""
         runner = CliRunner()
@@ -21,7 +21,7 @@ class TestCLIInit:
         assert "initialized" in result.output.lower()
         mock_init_db.assert_called_once_with(None)
 
-    @patch("diigo_tagger.cli.main.init_db")
+    @patch("diigo_tagger.db.init_db")
     def test_init_with_custom_path(self, mock_init_db):
         """Should initialize database at custom path."""
         runner = CliRunner()
@@ -34,10 +34,11 @@ class TestCLIInit:
 class TestCLISync:
     """Test bookmark sync command."""
 
-    @patch("diigo_tagger.cli.main.DiigoClient")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.clients.diigo_client.DiigoClient")
+    @patch("diigo_tagger.db.get_session")
+    @patch("diigo_tagger.cli.main._load_env")
     @patch.dict(os.environ, {}, clear=True)
-    def test_sync_requires_api_key(self, mock_session, mock_client):
+    def test_sync_requires_api_key(self, mock_load_env, mock_session, mock_client):
         """Should fail if DIIGO_API_KEY not set."""
         runner = CliRunner()
         result = runner.invoke(cli, ["sync"])
@@ -45,8 +46,8 @@ class TestCLISync:
         assert result.exit_code != 0
         assert "DIIGO_API_KEY" in result.output
 
-    @patch("diigo_tagger.cli.main.DiigoClient")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.clients.diigo_client.DiigoClient")
+    @patch("diigo_tagger.db.get_session")
     def test_sync_fetches_bookmarks(self, mock_session, mock_client_class):
         """Should fetch bookmarks from Diigo and update database."""
         # Mock Diigo client
@@ -73,8 +74,8 @@ class TestCLISearch:
     """Test tag search command."""
 
     @pytest.mark.skip(reason="Search command implementation changed, test needs updating")
-    @patch("diigo_tagger.cli.main.TagReconciliationService")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.services.tag_reconciliation.TagReconciliationService")
+    @patch("diigo_tagger.db.get_session")
     def test_search_wildcard(self, mock_session, mock_service_class):
         """Should perform wildcard search."""
         # Mock database session
@@ -100,8 +101,8 @@ class TestCLISearch:
         mock_service.wildcard_search.assert_called_once_with("python*", limit=20)
 
     @pytest.mark.skip(reason="Search command implementation changed, test needs updating")
-    @patch("diigo_tagger.cli.main.TagReconciliationService")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.services.tag_reconciliation.TagReconciliationService")
+    @patch("diigo_tagger.db.get_session")
     def test_search_semantic(self, mock_session, mock_service_class):
         """Should perform semantic search."""
         # Mock database session
@@ -126,7 +127,7 @@ class TestCLIMerge:
     """Test tag merge command."""
 
     @pytest.mark.skip(reason="Click multiple option handling issue in test environment - command works in real usage")
-    @patch("diigo_tagger.cli.main.TagReconciliationService")
+    @patch("diigo_tagger.services.tag_reconciliation.TagReconciliationService")
     def test_merge_tags(self, mock_service_class):
         """Should merge source tags into target."""
         mock_service = Mock()
@@ -144,7 +145,7 @@ class TestCLIMerge:
                 source_tags=["Python", "PYTHON"], target_tag="python"
             )
 
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.db.get_session")
     def test_merge_requires_sources(self, mock_session):
         """Should require at least one source tag."""
         runner = CliRunner()
@@ -156,10 +157,11 @@ class TestCLIMerge:
 class TestCLIGenerateTags:
     """Test AI tag generation command."""
 
-    @patch("diigo_tagger.cli.main.OpenAIClient")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.clients.openai_client.OpenAIClient")
+    @patch("diigo_tagger.db.get_session")
+    @patch("diigo_tagger.cli.main._load_env")
     @patch.dict(os.environ, {}, clear=True)
-    def test_generate_requires_api_key(self, mock_session, mock_client):
+    def test_generate_requires_api_key(self, mock_load_env, mock_session, mock_client):
         """Should fail if OPENAI_API_KEY not set."""
         runner = CliRunner()
         result = runner.invoke(
@@ -169,8 +171,8 @@ class TestCLIGenerateTags:
         assert result.exit_code != 0
         assert "OPENAI_API_KEY" in result.output
 
-    @patch("diigo_tagger.cli.main.OpenAIClient")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.clients.openai_client.OpenAIClient")
+    @patch("diigo_tagger.db.get_session")
     def test_generate_tags_success(self, mock_session, mock_client_class):
         """Should generate tags using OpenAI."""
         mock_client = Mock()
@@ -198,7 +200,7 @@ class TestCLIGenerateTags:
 class TestCLIList:
     """Test list tags command."""
 
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.db.get_session")
     def test_list_tags(self, mock_session):
         """Should list all tags."""
         mock_db = Mock()
@@ -221,7 +223,7 @@ class TestCLIList:
         assert result.exit_code == 0
         assert "python" in result.output
 
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.db.get_session")
     def test_list_with_limit(self, mock_session):
         """Should respect limit parameter."""
         mock_db = Mock()
@@ -239,11 +241,12 @@ class TestCLIList:
 class TestCLIAdd:
     """Test add bookmark command."""
 
-    @patch("diigo_tagger.cli.main.DiigoClient")
-    @patch("diigo_tagger.cli.main.OpenAIClient")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.clients.diigo_client.DiigoClient")
+    @patch("diigo_tagger.clients.openai_client.OpenAIClient")
+    @patch("diigo_tagger.db.get_session")
+    @patch("diigo_tagger.cli.main._load_env")
     @patch.dict(os.environ, {}, clear=True)
-    def test_add_requires_diigo_credentials(self, mock_session, mock_openai, mock_diigo):
+    def test_add_requires_diigo_credentials(self, mock_load_env, mock_session, mock_openai, mock_diigo):
         """Should fail if DIIGO credentials not set."""
         runner = CliRunner()
         result = runner.invoke(cli, ["add", "--url", "https://example.com"])
@@ -251,10 +254,10 @@ class TestCLIAdd:
         assert result.exit_code != 0
         assert "DIIGO_API_KEY" in result.output or "DIIGO_USERNAME" in result.output
 
-    @patch("diigo_tagger.cli.main.BookmarkService")
-    @patch("diigo_tagger.cli.main.DiigoClient")
-    @patch("diigo_tagger.cli.main.OpenAIClient")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.services.bookmark_service.BookmarkService")
+    @patch("diigo_tagger.clients.diigo_client.DiigoClient")
+    @patch("diigo_tagger.clients.openai_client.OpenAIClient")
+    @patch("diigo_tagger.db.get_session")
     def test_add_bookmark_success(self, mock_session, mock_openai_class, mock_diigo_class, mock_service_class):
         """Should add bookmark successfully."""
         # Mock service
@@ -294,10 +297,10 @@ class TestCLIAdd:
         assert "Test Bookmark" in result.output
         mock_service.add_bookmark.assert_called_once()
 
-    @patch("diigo_tagger.cli.main.BookmarkService")
-    @patch("diigo_tagger.cli.main.DiigoClient")
-    @patch("diigo_tagger.cli.main.OpenAIClient")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.services.bookmark_service.BookmarkService")
+    @patch("diigo_tagger.clients.diigo_client.DiigoClient")
+    @patch("diigo_tagger.clients.openai_client.OpenAIClient")
+    @patch("diigo_tagger.db.get_session")
     def test_add_bookmark_conflict_keep_original(self, mock_session, mock_openai_class, mock_diigo_class, mock_service_class):
         """Should handle conflict with keep original choice."""
         # Mock service
@@ -353,10 +356,10 @@ class TestCLIAdd:
         assert "New Title" in result.output
         assert mock_service.add_bookmark.call_count == 2
 
-    @patch("diigo_tagger.cli.main.BookmarkService")
-    @patch("diigo_tagger.cli.main.DiigoClient")
-    @patch("diigo_tagger.cli.main.OpenAIClient")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.services.bookmark_service.BookmarkService")
+    @patch("diigo_tagger.clients.diigo_client.DiigoClient")
+    @patch("diigo_tagger.clients.openai_client.OpenAIClient")
+    @patch("diigo_tagger.db.get_session")
     def test_add_bookmark_conflict_custom_code(self, mock_session, mock_openai_class, mock_diigo_class, mock_service_class):
         """Should handle conflict with custom 3-character code."""
         # Mock service
@@ -411,10 +414,10 @@ class TestCLIAdd:
         # Verify second call received conflict_resolution parameter
         assert mock_service.add_bookmark.call_args_list[1][1]["conflict_resolution"] == "nns"
 
-    @patch("diigo_tagger.cli.main.BookmarkService")
-    @patch("diigo_tagger.cli.main.DiigoClient")
-    @patch("diigo_tagger.cli.main.OpenAIClient")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.services.bookmark_service.BookmarkService")
+    @patch("diigo_tagger.clients.diigo_client.DiigoClient")
+    @patch("diigo_tagger.clients.openai_client.OpenAIClient")
+    @patch("diigo_tagger.db.get_session")
     def test_add_bookmark_conflict_cancel(self, mock_session, mock_openai_class, mock_diigo_class, mock_service_class):
         """Should handle conflict cancellation."""
         # Mock service
@@ -456,9 +459,9 @@ class TestCLIAdd:
         assert "Cancelled" in result.output or "cancelled" in result.output.lower()
         assert mock_service.add_bookmark.call_count == 1  # Only first call
 
-    @patch("diigo_tagger.cli.main.BookmarkService")
-    @patch("diigo_tagger.cli.main.DiigoClient")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.services.bookmark_service.BookmarkService")
+    @patch("diigo_tagger.clients.diigo_client.DiigoClient")
+    @patch("diigo_tagger.db.get_session")
     def test_add_bookmark_without_openai(self, mock_session, mock_diigo_class, mock_service_class):
         """Should work without OpenAI client (LLM features disabled)."""
         # Mock service
@@ -496,10 +499,11 @@ class TestCLIAdd:
 class TestCLILookup:
     """Test lookup bookmark command."""
 
-    @patch("diigo_tagger.cli.main.DiigoClient")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.clients.diigo_client.DiigoClient")
+    @patch("diigo_tagger.db.get_session")
+    @patch("diigo_tagger.cli.main._load_env")
     @patch.dict(os.environ, {}, clear=True)
-    def test_lookup_requires_credentials(self, mock_session, mock_diigo):
+    def test_lookup_requires_credentials(self, mock_load_env, mock_session, mock_diigo):
         """Should fail if DIIGO credentials not set."""
         runner = CliRunner()
         result = runner.invoke(cli, ["lookup", "abc12345"])
@@ -508,9 +512,9 @@ class TestCLILookup:
         assert "DIIGO_API_KEY" in result.output or "DIIGO_USERNAME" in result.output
 
     @pytest.mark.skip(reason="Click variadic argument handling issue in test environment - command works in real usage")
-    @patch("diigo_tagger.cli.main.BookmarkService")
-    @patch("diigo_tagger.cli.main.DiigoClient")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.services.bookmark_service.BookmarkService")
+    @patch("diigo_tagger.clients.diigo_client.DiigoClient")
+    @patch("diigo_tagger.db.get_session")
     def test_lookup_by_display_id(self, mock_session, mock_diigo_class, mock_service_class):
         """Should lookup bookmark by display ID."""
         # Mock service
@@ -552,9 +556,9 @@ class TestCLILookup:
         mock_service.lookup_by_identifiers.assert_called_once_with(["abc12345"])
 
     @pytest.mark.skip(reason="Click variadic argument handling issue in test environment - command works in real usage")
-    @patch("diigo_tagger.cli.main.BookmarkService")
-    @patch("diigo_tagger.cli.main.DiigoClient")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.services.bookmark_service.BookmarkService")
+    @patch("diigo_tagger.clients.diigo_client.DiigoClient")
+    @patch("diigo_tagger.db.get_session")
     def test_lookup_by_url(self, mock_session, mock_diigo_class, mock_service_class):
         """Should lookup bookmark by URL."""
         # Mock service
@@ -595,9 +599,9 @@ class TestCLILookup:
         mock_service.lookup_by_identifiers.assert_called_once_with(["https://example.com"])
 
     @pytest.mark.skip(reason="Click variadic argument handling issue in test environment - command works in real usage")
-    @patch("diigo_tagger.cli.main.BookmarkService")
-    @patch("diigo_tagger.cli.main.DiigoClient")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.services.bookmark_service.BookmarkService")
+    @patch("diigo_tagger.clients.diigo_client.DiigoClient")
+    @patch("diigo_tagger.db.get_session")
     def test_lookup_not_found(self, mock_session, mock_diigo_class, mock_service_class):
         """Should handle bookmark not found."""
         # Mock service
@@ -630,9 +634,9 @@ class TestCLILookup:
         assert "No bookmark found" in result.output or "notfound" in result.output
 
     @pytest.mark.skip(reason="Click variadic argument handling issue in test environment - command works in real usage")
-    @patch("diigo_tagger.cli.main.BookmarkService")
-    @patch("diigo_tagger.cli.main.DiigoClient")
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.services.bookmark_service.BookmarkService")
+    @patch("diigo_tagger.clients.diigo_client.DiigoClient")
+    @patch("diigo_tagger.db.get_session")
     def test_lookup_multiple_identifiers(self, mock_session, mock_diigo_class, mock_service_class):
         """Should lookup multiple bookmarks at once."""
         # Mock service
@@ -681,7 +685,7 @@ class TestCLILookup:
         assert "Bookmark 2" in result.output
         mock_service.lookup_by_identifiers.assert_called_once_with(["abc12345", "def67890"])
 
-    @patch("diigo_tagger.cli.main.get_session")
+    @patch("diigo_tagger.db.get_session")
     def test_lookup_no_identifiers(self, mock_session):
         """Should fail if no identifiers provided."""
         # Mock session manager

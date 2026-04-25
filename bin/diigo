@@ -1,6 +1,17 @@
 #!/bin/bash
-# ABOUTME: CLI wrapper for Diigo Tagger AI — delegates to poetry run diigo
+# ABOUTME: CLI wrapper for Diigo Tagger AI — calls venv Python directly for fast startup
 # ABOUTME: Installed by scripts/install.sh, __DIIGO_HOME__ replaced at install time
 export DIIGO_HOME="__DIIGO_HOME__"
 cd "$DIIGO_HOME" || { echo "Error: DIIGO_HOME directory not found: $DIIGO_HOME"; exit 1; }
-poetry run diigo "$@"
+
+# Resolve venv Python path (cached at install time, with fallback)
+VENV_PYTHON="__VENV_PYTHON__"
+if [ ! -x "$VENV_PYTHON" ]; then
+    VENV_PYTHON="$(poetry env info -e 2>/dev/null)"
+fi
+if [ ! -x "$VENV_PYTHON" ]; then
+    echo "Error: Could not find Python virtualenv. Run 'poetry install' in $DIIGO_HOME"
+    exit 1
+fi
+
+"$VENV_PYTHON" -m diigo_tagger.cli.main "$@"
