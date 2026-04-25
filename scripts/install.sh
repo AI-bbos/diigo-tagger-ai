@@ -23,8 +23,17 @@ INSTALL_DIR="${INSTALL_DIR/#\~/$HOME}"
 # Create install dir if needed
 mkdir -p "$INSTALL_DIR"
 
-# Copy wrapper with placeholder replaced
+# Resolve venv Python path
+VENV_PYTHON="$(cd "$REPO_DIR" && poetry env info -e 2>/dev/null || echo "")"
+if [ -z "$VENV_PYTHON" ]; then
+    echo "WARNING: Could not detect virtualenv. Run 'poetry install' first."
+    echo "         The wrapper will fall back to 'poetry env info' at runtime (slower)."
+    VENV_PYTHON="__VENV_PYTHON__"  # Leave placeholder for runtime fallback
+fi
+
+# Copy wrapper with placeholders replaced
 sed -e "s|__DIIGO_HOME__|$REPO_DIR|g" \
+    -e "s|__VENV_PYTHON__|$VENV_PYTHON|g" \
     "$REPO_DIR/bin/diigo" > "$INSTALL_DIR/diigo"
 chmod +x "$INSTALL_DIR/diigo"
 
