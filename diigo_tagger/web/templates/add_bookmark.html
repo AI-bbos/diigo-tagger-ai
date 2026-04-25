@@ -1,0 +1,455 @@
+{% extends "base.html" %}
+
+{% block title %}Add Bookmark - Diigo Tagger{% endblock %}
+
+{% block extra_head %}
+<style>
+    .tag-chip {
+        display: inline-flex;
+        align-items: center;
+        background-color: #e0e7ff;
+        color: #4338ca;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.875rem;
+        margin: 0.25rem;
+    }
+    .tag-chip-remove {
+        margin-left: 0.5rem;
+        cursor: pointer;
+        font-weight: bold;
+    }
+    .tag-chip-remove:hover {
+        color: #dc2626;
+    }
+    .tag-suggestion {
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .tag-suggestion:hover {
+        background-color: #dbeafe;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">
+                Add New Bookmark
+            </h3>
+
+            <!-- Status Messages -->
+            <div id="status-message" class="hidden mb-4 rounded-md p-4"></div>
+
+            <!-- Main Form -->
+            <form id="add-bookmark-form" class="space-y-6">
+                <!-- URL Field -->
+                <div>
+                    <label for="url" class="block text-sm font-medium text-gray-700">
+                        URL <span class="text-red-500">*</span>
+                    </label>
+                    <div class="mt-1 flex rounded-md shadow-sm">
+                        <input type="url"
+                               name="url"
+                               id="url"
+                               required
+                               placeholder="https://example.com/article"
+                               class="flex-1 block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500">The URL of the webpage you want to bookmark</p>
+                </div>
+
+                <!-- Title Field -->
+                <div>
+                    <label for="title" class="block text-sm font-medium text-gray-700">
+                        Title (optional)
+                    </label>
+                    <input type="text"
+                           name="title"
+                           id="title"
+                           placeholder="Leave empty to auto-fetch from webpage"
+                           class="mt-1 block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
+                    <p class="mt-1 text-sm text-gray-500">Manually provide title or leave empty to auto-fetch</p>
+                </div>
+
+                <!-- Description Field -->
+                <div>
+                    <label for="description" class="block text-sm font-medium text-gray-700">
+                        Description (optional)
+                    </label>
+                    <textarea name="description"
+                              id="description"
+                              rows="3"
+                              placeholder="Leave empty to auto-fetch from webpage"
+                              class="mt-1 block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2"></textarea>
+                    <p class="mt-1 text-sm text-gray-500">Manually provide description or leave empty to auto-fetch</p>
+                </div>
+
+                <!-- Tags Field -->
+                <div>
+                    <label for="tags-input" class="block text-sm font-medium text-gray-700">
+                        Tags (optional)
+                    </label>
+                    <div class="mt-1">
+                        <input type="text"
+                               id="tags-input"
+                               placeholder="Press Enter to add tag"
+                               class="block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
+                    </div>
+                    <div id="tags-container" class="mt-2 min-h-[2rem]">
+                        <!-- Tag chips will be inserted here -->
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500">Press Enter to add each tag. Leave empty for AI suggestions.</p>
+                </div>
+
+                <!-- Shared Toggle -->
+                <div class="flex items-center">
+                    <input type="checkbox"
+                           id="shared"
+                           name="shared"
+                           checked
+                           class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                    <label for="shared" class="ml-2 block text-sm text-gray-900">
+                        Make this bookmark public (shared)
+                    </label>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="flex items-center justify-end space-x-4">
+                    <button type="button"
+                            id="cancel-btn"
+                            onclick="window.location.href='/'"
+                            class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            id="submit-btn"
+                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Add Bookmark
+                    </button>
+                </div>
+            </form>
+
+            <!-- Conflict Resolution UI (hidden by default) -->
+            <div id="conflict-ui" class="hidden mt-8 border-t border-gray-200 pt-6">
+                <h4 class="text-md font-medium text-gray-900 mb-4">
+                    Bookmark Already Exists - Choose How to Resolve
+                </h4>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <!-- Existing Bookmark -->
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <h5 class="font-semibold text-yellow-900 mb-2">Current Bookmark</h5>
+                        <div class="text-sm space-y-2">
+                            <div>
+                                <span class="font-medium text-gray-700">Title:</span>
+                                <span id="conflict-existing-title" class="text-gray-900"></span>
+                            </div>
+                            <div>
+                                <span class="font-medium text-gray-700">Description:</span>
+                                <p id="conflict-existing-description" class="text-gray-900 mt-1"></p>
+                            </div>
+                            <div>
+                                <span class="font-medium text-gray-700">Tags:</span>
+                                <div id="conflict-existing-tags" class="mt-1"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- New Bookmark -->
+                    <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <h5 class="font-semibold text-green-900 mb-2">New Version</h5>
+                        <div class="text-sm space-y-2">
+                            <div>
+                                <span class="font-medium text-gray-700">Title:</span>
+                                <span id="conflict-new-title" class="text-gray-900"></span>
+                            </div>
+                            <div>
+                                <span class="font-medium text-gray-700">Description:</span>
+                                <p id="conflict-new-description" class="text-gray-900 mt-1"></p>
+                            </div>
+                            <div>
+                                <span class="font-medium text-gray-700">Tags:</span>
+                                <div id="conflict-new-tags" class="mt-1"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resolution Options -->
+                <div class="space-y-3">
+                    <h5 class="font-medium text-gray-900">Choose Resolution Strategy:</h5>
+
+                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                        <input type="radio" name="resolution" value="ooo" class="mt-1 mr-3">
+                        <div>
+                            <div class="font-medium">Keep Original</div>
+                            <div class="text-sm text-gray-600">Keep all existing data, discard new</div>
+                        </div>
+                    </label>
+
+                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                        <input type="radio" name="resolution" value="nnn" class="mt-1 mr-3">
+                        <div>
+                            <div class="font-medium">Replace All</div>
+                            <div class="text-sm text-gray-600">Replace all fields with new data</div>
+                        </div>
+                    </label>
+
+                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                        <input type="radio" name="resolution" value="sss" checked class="mt-1 mr-3">
+                        <div>
+                            <div class="font-medium">Smart Merge (Recommended)</div>
+                            <div class="text-sm text-gray-600">Keep original if new is empty, merge tags</div>
+                        </div>
+                    </label>
+
+                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                        <input type="radio" name="resolution" value="nns" class="mt-1 mr-3">
+                        <div>
+                            <div class="font-medium">Update Title & Description, Merge Tags</div>
+                            <div class="text-sm text-gray-600">Replace title/description, combine tags</div>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- Conflict Resolution Buttons -->
+                <div class="flex items-center justify-end space-x-4 mt-6">
+                    <button type="button"
+                            id="conflict-cancel-btn"
+                            class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        Cancel
+                    </button>
+                    <button type="button"
+                            id="conflict-resolve-btn"
+                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
+                        Resolve Conflict
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Tag management
+const tagsSet = new Set();
+const tagsInput = document.getElementById('tags-input');
+const tagsContainer = document.getElementById('tags-container');
+
+function addTag(tagName) {
+    tagName = tagName.trim().toLowerCase();
+    if (!tagName || tagsSet.has(tagName)) return;
+
+    tagsSet.add(tagName);
+    renderTags();
+}
+
+function removeTag(tagName) {
+    tagsSet.delete(tagName);
+    renderTags();
+}
+
+function renderTags() {
+    tagsContainer.innerHTML = '';
+    tagsSet.forEach(tag => {
+        const chip = document.createElement('span');
+        chip.className = 'tag-chip';
+        chip.innerHTML = `${tag}<span class="tag-chip-remove" onclick="removeTag('${tag}')">&times;</span>`;
+        tagsContainer.appendChild(chip);
+    });
+}
+
+// Handle Enter key in tags input
+tagsInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        addTag(tagsInput.value);
+        tagsInput.value = '';
+    }
+});
+
+// Form submission
+const form = document.getElementById('add-bookmark-form');
+const submitBtn = document.getElementById('submit-btn');
+const statusMessage = document.getElementById('status-message');
+
+form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    // Disable submit button
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Adding...';
+
+    // Collect form data
+    const url = document.getElementById('url').value.trim();
+    const title = document.getElementById('title').value.trim() || null;
+    const description = document.getElementById('description').value.trim() || null;
+    const tags = Array.from(tagsSet);
+    const shared = document.getElementById('shared').checked;
+
+    try {
+        const response = await fetch('/api/v1/bookmarks', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                url,
+                title,
+                description,
+                tags: tags.length > 0 ? tags : null,
+                shared
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.conflict) {
+            // Show conflict resolution UI
+            showConflictUI(data);
+        } else if (response.ok) {
+            // Success
+            showStatus('success', 'Bookmark Added Successfully',
+                `Bookmark added with ID: ${data.display_id}`);
+
+            // Reset form
+            form.reset();
+            tagsSet.clear();
+            renderTags();
+
+            // Redirect after 2 seconds
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 2000);
+        } else {
+            // Error
+            const errorMsg = data.detail?.detail || data.detail || 'Failed to add bookmark';
+            showStatus('error', 'Error', errorMsg);
+        }
+    } catch (error) {
+        showStatus('error', 'Network Error', 'Failed to connect to server');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Add Bookmark';
+    }
+});
+
+// Show conflict UI
+let conflictData = null;
+
+function showConflictUI(data) {
+    conflictData = data;
+
+    // Hide main form, show conflict UI
+    form.classList.add('opacity-50', 'pointer-events-none');
+    document.getElementById('conflict-ui').classList.remove('hidden');
+
+    // Populate existing bookmark
+    document.getElementById('conflict-existing-title').textContent = data.existing.title || '(no title)';
+    document.getElementById('conflict-existing-description').textContent = data.existing.description || '(no description)';
+    const existingTagsEl = document.getElementById('conflict-existing-tags');
+    existingTagsEl.innerHTML = data.existing.tags.map(t =>
+        `<span class="tag-chip">${t}</span>`
+    ).join('');
+
+    // Populate new bookmark
+    document.getElementById('conflict-new-title').textContent = data.new.title || '(no title)';
+    document.getElementById('conflict-new-description').textContent = data.new.description || '(no description)';
+    const newTagsEl = document.getElementById('conflict-new-tags');
+    newTagsEl.innerHTML = data.new.tags.map(t =>
+        `<span class="tag-chip">${t}</span>`
+    ).join('');
+
+    showStatus('warning', 'Conflict Detected',
+        'This bookmark already exists. Please choose how to resolve the conflict.');
+}
+
+// Conflict resolution
+document.getElementById('conflict-resolve-btn').addEventListener('click', async () => {
+    const resolution = document.querySelector('input[name="resolution"]:checked').value;
+    const resolveBtn = document.getElementById('conflict-resolve-btn');
+
+    resolveBtn.disabled = true;
+    resolveBtn.textContent = 'Resolving...';
+
+    try {
+        const response = await fetch('/api/v1/bookmarks/resolve', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                url: conflictData.url,
+                resolution: resolution,
+                title: conflictData.new.title,
+                description: conflictData.new.description,
+                tags: conflictData.new.tags,
+                shared: document.getElementById('shared').checked
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showStatus('success', 'Conflict Resolved',
+                `Bookmark updated with ID: ${data.display_id}`);
+
+            // Redirect after 2 seconds
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 2000);
+        } else {
+            const errorMsg = data.detail?.detail || data.detail || 'Failed to resolve conflict';
+            showStatus('error', 'Error', errorMsg);
+        }
+    } catch (error) {
+        showStatus('error', 'Network Error', 'Failed to connect to server');
+    } finally {
+        resolveBtn.disabled = false;
+        resolveBtn.textContent = 'Resolve Conflict';
+    }
+});
+
+// Cancel conflict resolution
+document.getElementById('conflict-cancel-btn').addEventListener('click', () => {
+    document.getElementById('conflict-ui').classList.add('hidden');
+    form.classList.remove('opacity-50', 'pointer-events-none');
+    conflictData = null;
+});
+
+// Status message helper
+function showStatus(type, title, message) {
+    const statusEl = statusMessage;
+    statusEl.classList.remove('hidden', 'bg-green-50', 'bg-red-50', 'bg-yellow-50',
+        'border-green-200', 'border-red-200', 'border-yellow-200');
+
+    const colors = {
+        success: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-800', icon: 'text-green-400' },
+        error: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-800', icon: 'text-red-400' },
+        warning: { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-800', icon: 'text-yellow-400' }
+    };
+
+    const color = colors[type];
+    statusEl.className = `mb-4 rounded-md p-4 border ${color.bg} ${color.border}`;
+
+    const iconPath = type === 'success'
+        ? 'M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z'
+        : 'M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z';
+
+    statusEl.innerHTML = `
+        <div class="flex">
+            <svg class="h-5 w-5 ${color.icon}" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="${iconPath}" clip-rule="evenodd" />
+            </svg>
+            <div class="ml-3">
+                <h3 class="text-sm font-medium ${color.text}">${title}</h3>
+                <p class="mt-1 text-sm ${color.text}">${message}</p>
+            </div>
+        </div>
+    `;
+}
+</script>
+{% endblock %}
