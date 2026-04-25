@@ -114,6 +114,8 @@ class MetadataFetcher:
                 'no_warnings': True,
                 'extract_flat': False,
                 'skip_download': True,
+                'format': 'best',
+                'ignore_no_formats_error': True,
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
