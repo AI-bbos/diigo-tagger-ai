@@ -297,12 +297,13 @@ class BookmarkService:
             )
 
             # Use fetched title as fallback if no user title
-            llm_title = title or fetched_title or urlparse(url).netloc
+            llm_title = title or fetched_title or self.metadata_fetcher._title_from_url_path(url)
             llm_description = description or fetched_description
 
         # Format final title/description
         final_title = title
         final_description = description
+        title_missing = False
 
         if title and llm_title and title != llm_title:
             # User provided, add LLM in parentheses: "User Title (LLM Title)"
@@ -310,6 +311,11 @@ class BookmarkService:
         elif not title and llm_title:
             # No user title, use LLM
             final_title = llm_title
+        elif not title and not llm_title:
+            # No title from user or LLM; try URL path extraction as last resort
+            final_title = self.metadata_fetcher._title_from_url_path(url) or None
+            if not final_title:
+                title_missing = True
 
         if description and llm_description and description != llm_description:
             final_description = f"{description} ({llm_description})"
@@ -328,7 +334,7 @@ class BookmarkService:
             existing_tags = [tag.name for tag in existing_bookmark.tags]
 
             # Return conflict information for CLI to handle
-            return {
+            result = {
                 "conflict": True,
                 "url": url,
                 "existing": {
@@ -348,6 +354,9 @@ class BookmarkService:
                     "tags": llm_tags
                 }
             }
+            if title_missing:
+                result["title_missing"] = True
+            return result
 
         # Determine final values based on conflict resolution strategy
         if existing_bookmark and conflict_resolution:
@@ -465,7 +474,7 @@ class BookmarkService:
 
         self.session.commit()
 
-        return {
+        result = {
             "url": url,
             "title": final_title,
             "description": final_description,
@@ -477,6 +486,9 @@ class BookmarkService:
             },
             "display_id": display_id
         }
+        if title_missing:
+            result["title_missing"] = True
+        return result
 
     def lookup_by_url(self, url: str, include_similar: bool = True) -> Dict:
         """
