@@ -262,10 +262,13 @@ class TestBookmarkServiceAdd:
         )
         existing_bookmark.tags = [existing_tag]
 
+        # prepare_bookmark queries once (bookmark check), submit_bookmark queries once
+        # (bookmark check), then tag lookups in submit_bookmark
         mock_session.query.return_value.filter_by.return_value.first.side_effect = [
-            existing_bookmark,  # First call: check if bookmark exists
-            None,  # Subsequent calls: tags don't exist yet
-            None,
+            existing_bookmark,  # prepare_bookmark: check if bookmark exists
+            existing_bookmark,  # submit_bookmark: check if bookmark exists
+            None,  # submit_bookmark: tag lookup for "old-tag"
+            None,  # submit_bookmark: tag lookup for "new-tag"
         ]
 
         mock_diigo_client.create_bookmark.return_value = {"success": True}
@@ -282,6 +285,7 @@ class TestBookmarkServiceAdd:
 
         # Should have both old and new tags (smart merge)
         assert "new-tag" in result["tags"]
+        assert "old-tag" in result["tags"]
         # Old tag should be included in smart merge
         mock_diigo_client.create_bookmark.assert_called_once()
 
@@ -525,3 +529,220 @@ class TestBookmarkServiceTitleFallback:
 
         assert result["title"] == "My Custom Title"
         assert "title_missing" not in result
+
+
+class TestPrepareBookmark:
+    """Test prepare_bookmark returns preview without side effects."""
+
+    def test_prepare_returns_preview_without_submitting(self):
+        """Should return preview dict without calling Diigo API or committing."""
+        mock_session = Mock()
+        mock_diigo_client = Mock()
+        mock_openai_client = Mock()
+
+        # No existing bookmark
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+
+        # LLM returns suggestions
+        mock_openai_client.generate_tags.return_value = ["python", "tutorial"]
+
+        service = BookmarkService(mock_session, mock_diigo_client, mock_openai_client)
+
+        with patch.object(service.metadata_fetcher, 'fetch_metadata', return_value={
+            'title': 'Fetched Title',
+            'description': 'Fetched Desc',
+            'keywords': []
+        }):
+            result = service.prepare_bookmark(
+                url="https://example.com/article",
+                title="My Title"
+            )
+
+        # Should return preview fields
+        assert result["url"] == "https://example.com/article"
+        assert result["title"] == "My Title"
+        assert "python" in result["tags"]
+        assert "tutorial" in result["tags"]
+        assert result["display_id"]
+        assert result["title_missing"] is False
+        assert result["conflict"] is None
+        assert result["llm_suggestions"]["tags"] == ["python", "tutorial"]
+
+        # Should NOT call Diigo API or commit
+        mock_diigo_client.create_bookmark.assert_not_called()
+        mock_session.commit.assert_not_called()
+        mock_session.add.assert_not_called()
+
+    def test_prepare_detects_conflict(self):
+        """Should return conflict info when bookmark already exists."""
+        mock_session = Mock()
+        mock_diigo_client = Mock()
+        mock_openai_client = Mock()
+
+        # Existing bookmark
+        existing_bookmark = Bookmark(
+            url="https://example.com",
+            title="Old Title",
+            description="Old Desc",
+            display_id="abc12345"
+        )
+        existing_bookmark.tags = [Tag(name="old-tag", count=1, source="user")]
+        mock_session.query.return_value.filter_by.return_value.first.return_value = existing_bookmark
+
+        mock_openai_client.generate_tags.return_value = ["new-tag"]
+
+        service = BookmarkService(mock_session, mock_diigo_client, mock_openai_client)
+
+        with patch.object(service.metadata_fetcher, 'fetch_metadata', return_value={
+            'title': '', 'description': '', 'keywords': []
+        }):
+            result = service.prepare_bookmark(
+                url="https://example.com",
+                title="New Title"
+            )
+
+        assert result["conflict"] is not None
+        assert result["conflict"]["existing"]["title"] == "Old Title"
+        assert result["conflict"]["new"]["title"] == "New Title"
+        # Still no side effects
+        mock_diigo_client.create_bookmark.assert_not_called()
+        mock_session.commit.assert_not_called()
+
+    def test_prepare_sets_title_missing(self):
+        """Should set title_missing when no title can be resolved."""
+        mock_session = Mock()
+        mock_diigo_client = Mock()
+        mock_openai_client = Mock()
+
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        mock_openai_client.generate_tags.return_value = ["web"]
+
+        service = BookmarkService(mock_session, mock_diigo_client, mock_openai_client)
+
+        with patch.object(service.metadata_fetcher, 'fetch_metadata', return_value={
+            'title': '', 'description': '', 'keywords': []
+        }):
+            with patch.object(service.metadata_fetcher, '_title_from_url_path', return_value=''):
+                result = service.prepare_bookmark(url="https://example.com")
+
+        assert result["title_missing"] is True
+        assert not result["title"]
+
+    def test_prepare_no_changes_when_existing_and_no_overrides(self):
+        """Should indicate no changes when bookmark exists and no overrides given."""
+        mock_session = Mock()
+        mock_diigo_client = Mock()
+
+        existing_bookmark = Bookmark(
+            url="https://example.com",
+            title="Existing Title",
+            description="Existing Desc",
+            display_id="abc12345"
+        )
+        existing_bookmark.tags = [Tag(name="tag1", count=1, source="user")]
+        mock_session.query.return_value.filter_by.return_value.first.return_value = existing_bookmark
+
+        service = BookmarkService(mock_session, mock_diigo_client)
+
+        result = service.prepare_bookmark(url="https://example.com")
+
+        assert result["conflict"]["no_changes"] is True
+        assert result["title"] == "Existing Title"
+        assert result["tags"] == ["tag1"]
+
+
+class TestSubmitBookmark:
+    """Test submit_bookmark creates/updates the bookmark."""
+
+    def test_submit_creates_new_bookmark(self):
+        """Should call Diigo API and save to database for new bookmark."""
+        mock_session = Mock()
+        mock_diigo_client = Mock()
+
+        # No existing bookmark
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        mock_diigo_client.create_bookmark.return_value = {"success": True}
+
+        service = BookmarkService(mock_session, mock_diigo_client)
+
+        result = service.submit_bookmark(
+            url="https://example.com/new",
+            title="New Bookmark",
+            description="A description",
+            tags=["python", "web"],
+        )
+
+        assert result["url"] == "https://example.com/new"
+        assert result["title"] == "New Bookmark"
+        assert result["tags"] == ["python", "web"]
+        assert result["display_id"]
+        mock_diigo_client.create_bookmark.assert_called_once()
+        mock_session.add.assert_called()
+        mock_session.commit.assert_called()
+
+    def test_submit_updates_existing_bookmark(self):
+        """Should update existing bookmark in DB when URL already exists."""
+        mock_session = Mock()
+        mock_diigo_client = Mock()
+
+        existing_bookmark = Mock()
+        existing_bookmark.url = "https://example.com"
+        existing_bookmark.tags = Mock()
+        existing_bookmark.tags.clear = Mock()
+        existing_bookmark.tags.append = Mock()
+
+        mock_session.query.return_value.filter_by.return_value.first.return_value = existing_bookmark
+        mock_diigo_client.create_bookmark.return_value = {"success": True}
+
+        service = BookmarkService(mock_session, mock_diigo_client)
+
+        result = service.submit_bookmark(
+            url="https://example.com",
+            title="Updated Title",
+            description="Updated Desc",
+            tags=["updated-tag"],
+        )
+
+        assert result["title"] == "Updated Title"
+        assert existing_bookmark.title == "Updated Title"
+        assert existing_bookmark.description == "Updated Desc"
+        existing_bookmark.tags.clear.assert_called_once()
+        mock_session.commit.assert_called()
+
+    def test_submit_raises_on_diigo_failure(self):
+        """Should raise ValueError when Diigo API fails."""
+        mock_session = Mock()
+        mock_diigo_client = Mock()
+
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        mock_diigo_client.create_bookmark.side_effect = Exception("API error")
+
+        service = BookmarkService(mock_session, mock_diigo_client)
+
+        with pytest.raises(ValueError, match="Failed to create bookmark in Diigo"):
+            service.submit_bookmark(
+                url="https://example.com",
+                title="Title",
+                description="Desc",
+                tags=["tag"],
+            )
+
+    def test_submit_uses_untitled_when_title_empty(self):
+        """Should pass 'Untitled' to Diigo when title is empty/None."""
+        mock_session = Mock()
+        mock_diigo_client = Mock()
+
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        mock_diigo_client.create_bookmark.return_value = {"success": True}
+
+        service = BookmarkService(mock_session, mock_diigo_client)
+
+        service.submit_bookmark(
+            url="https://example.com",
+            title=None,
+            description="",
+            tags=[],
+        )
+
+        call_kwargs = mock_diigo_client.create_bookmark.call_args[1]
+        assert call_kwargs["title"] == "Untitled"
