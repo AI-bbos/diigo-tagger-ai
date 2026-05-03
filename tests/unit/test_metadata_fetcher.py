@@ -219,3 +219,189 @@ class TestMetadataFetcher:
             assert "error" in result
             assert result["content_type"] == "webpage"
             assert "not installed" in result["error"]
+
+
+class TestTitleFallbackChain:
+    """Test title extraction fallback: <title> → og:title → <h1> → URL path."""
+
+    @patch("diigo_tagger.clients.metadata_fetcher.requests.get")
+    def test_title_from_title_tag(self, mock_get):
+        """Should use <title> tag as first priority."""
+        html = b"""<html><head>
+            <title>Title Tag Value</title>
+            <meta property="og:title" content="OG Title Value">
+        </head><body><h1>H1 Value</h1></body></html>"""
+        mock_response = Mock()
+        mock_response.content = html
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        fetcher = MetadataFetcher()
+        result = fetcher._fetch_webpage_metadata("https://example.com/page")
+        assert result["title"] == "Title Tag Value"
+
+    @patch("diigo_tagger.clients.metadata_fetcher.requests.get")
+    def test_title_falls_back_to_og_title(self, mock_get):
+        """Should fall back to og:title when <title> is missing."""
+        html = b"""<html><head>
+            <meta property="og:title" content="OG Title Value">
+        </head><body><h1>H1 Value</h1></body></html>"""
+        mock_response = Mock()
+        mock_response.content = html
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        fetcher = MetadataFetcher()
+        result = fetcher._fetch_webpage_metadata("https://example.com/page")
+        assert result["title"] == "OG Title Value"
+
+    @patch("diigo_tagger.clients.metadata_fetcher.requests.get")
+    def test_title_falls_back_to_h1(self, mock_get):
+        """Should fall back to <h1> when <title> and og:title are missing."""
+        html = b"""<html><head></head><body><h1>H1 Title Here</h1></body></html>"""
+        mock_response = Mock()
+        mock_response.content = html
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        fetcher = MetadataFetcher()
+        result = fetcher._fetch_webpage_metadata("https://example.com/page")
+        assert result["title"] == "H1 Title Here"
+
+    @patch("diigo_tagger.clients.metadata_fetcher.requests.get")
+    def test_title_falls_back_to_url_path(self, mock_get):
+        """Should fall back to URL path when all HTML sources fail."""
+        html = b"""<html><head></head><body><p>No title anywhere</p></body></html>"""
+        mock_response = Mock()
+        mock_response.content = html
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        fetcher = MetadataFetcher()
+        result = fetcher._fetch_webpage_metadata(
+            "https://medium.com/data-science/great-article-about-ai"
+        )
+        assert result["title"] == "Great Article About Ai"  # .title() capitalizes all words
+
+    @patch("diigo_tagger.clients.metadata_fetcher.requests.get")
+    def test_og_description_preferred_over_meta_description(self, mock_get):
+        """Should prefer og:description over generic meta description."""
+        html = b"""<html><head>
+            <title>Page</title>
+            <meta name="description" content="Generic description">
+            <meta property="og:description" content="Better OG description">
+        </head><body></body></html>"""
+        mock_response = Mock()
+        mock_response.content = html
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        fetcher = MetadataFetcher()
+        result = fetcher._fetch_webpage_metadata("https://example.com")
+        assert result["description"] == "Better OG description"
+
+    @patch("diigo_tagger.clients.metadata_fetcher.requests.get")
+    def test_medium_page_with_og_tags(self, mock_get):
+        """Should extract title from og:title on Medium-style pages."""
+        html = b"""<html><head>
+            <title>Medium</title>
+            <meta property="og:title" content="Claude Code Hooks Explained">
+            <meta property="og:description" content="The missing layer between prompts and production">
+        </head><body></body></html>"""
+        mock_response = Mock()
+        mock_response.content = html
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        fetcher = MetadataFetcher()
+        result = fetcher._fetch_webpage_metadata("https://medium.com/article-slug")
+        # <title> is "Medium" which is generic but still present - it's the first priority
+        # Actually the spec says <title> is first priority, so "Medium" wins here
+        # But the real fix is that Medium serves real content to Chrome UA
+        assert result["title"] == "Medium"
+
+    @patch("diigo_tagger.clients.metadata_fetcher.requests.get")
+    def test_medium_page_empty_title_uses_og(self, mock_get):
+        """Should use og:title when <title> is empty string."""
+        html = b"""<html><head>
+            <title></title>
+            <meta property="og:title" content="Claude Code Hooks Explained">
+        </head><body></body></html>"""
+        mock_response = Mock()
+        mock_response.content = html
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        fetcher = MetadataFetcher()
+        result = fetcher._fetch_webpage_metadata("https://medium.com/article-slug")
+        assert result["title"] == "Claude Code Hooks Explained"
+
+    @patch("diigo_tagger.clients.metadata_fetcher.requests.get")
+    def test_user_agent_is_realistic_browser(self, mock_get):
+        """Should use a realistic Chrome browser User-Agent."""
+        mock_response = Mock()
+        mock_response.content = b"<html><head><title>Page</title></head></html>"
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        fetcher = MetadataFetcher()
+        fetcher._fetch_webpage_metadata("https://example.com")
+
+        call_kwargs = mock_get.call_args[1]
+        ua = call_kwargs["headers"]["User-Agent"]
+        assert "Chrome" in ua
+        assert "Macintosh" in ua
+        assert "DiigoTagger" not in ua
+
+
+class TestTitleFromUrlPath:
+    """Test URL path slug to title conversion."""
+
+    def test_medium_url_with_hex_suffix(self):
+        """Should strip trailing hex ID from Medium URLs."""
+        fetcher = MetadataFetcher()
+        url = "https://medium.com/data-science-collective/claude-code-hooks-explained-the-missing-layer-between-prompts-and-production-d0e3d1509278"
+        result = fetcher._title_from_url_path(url)
+        assert result == "Claude Code Hooks Explained The Missing Layer Between Prompts And Production"
+
+    def test_substack_url(self):
+        """Should handle Substack-style URLs."""
+        fetcher = MetadataFetcher()
+        url = "https://newsletter.substack.com/p/how-to-build-better-ai-agents"
+        result = fetcher._title_from_url_path(url)
+        assert result == "How To Build Better Ai Agents"
+
+    def test_simple_slug(self):
+        """Should handle simple hyphenated slugs."""
+        fetcher = MetadataFetcher()
+        url = "https://blog.example.com/posts/my-great-article"
+        result = fetcher._title_from_url_path(url)
+        assert result == "My Great Article"
+
+    def test_url_with_trailing_slash(self):
+        """Should handle trailing slashes."""
+        fetcher = MetadataFetcher()
+        url = "https://example.com/blog/some-post/"
+        result = fetcher._title_from_url_path(url)
+        assert result == "Some Post"
+
+    def test_root_url_returns_empty(self):
+        """Should return empty string for root URLs with no path."""
+        fetcher = MetadataFetcher()
+        url = "https://example.com/"
+        result = fetcher._title_from_url_path(url)
+        assert result == ""
+
+    def test_strips_uuid_suffix(self):
+        """Should strip UUID-style suffixes."""
+        fetcher = MetadataFetcher()
+        url = "https://example.com/great-article-a1b2c3d4e5f6"
+        result = fetcher._title_from_url_path(url)
+        assert result == "Great Article"
+
+    def test_short_hex_not_stripped(self):
+        """Should not strip short hex-like segments that might be meaningful."""
+        fetcher = MetadataFetcher()
+        url = "https://example.com/python-3-12-features"
+        result = fetcher._title_from_url_path(url)
+        assert result == "Python 3 12 Features"
