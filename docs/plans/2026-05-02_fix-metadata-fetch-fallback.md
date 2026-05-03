@@ -22,19 +22,34 @@
 - [ ] Add `og:description` check before generic meta description (already partially done but order matters)
 - [ ] Write/update tests for Medium-style pages with og: tags
 
-### Task 2: Fix domain-name fallback in BookmarkService
+### Task 2: Add URL-path title extraction as fallback
+
+**File:** `diigo_tagger/clients/metadata_fetcher.py`
+
+Sites like Medium and Substack encode the article title in the URL slug (e.g., `claude-code-hooks-explained-the-missing-layer-between-prompts-and-production-d0e3d1509278`). This is a better fallback than the domain name when HTML parsing fails.
+
+- [ ] Add `_title_from_url_path(url)` method:
+  1. Take the last meaningful path segment (ignore trailing hash suffixes like hex IDs)
+  2. Replace hyphens with spaces
+  3. Title-case the result
+  4. Strip trailing hex/UUID suffixes (common on Medium: 12+ hex chars at end)
+- [ ] Insert this in the fallback chain: `<title>` → `og:title` → `<h1>` → URL path slug
+- [ ] Write tests with Medium and Substack URLs
+
+### Task 3: Fix domain-name fallback in BookmarkService
 
 **File:** `diigo_tagger/services/bookmark_service.py`
 
-- [ ] Remove `urlparse(url).netloc` fallback from line 300. If no title is available, use the URL itself (more informative than just the domain) or leave empty for user to fill in during confirmation step
+- [ ] Replace `urlparse(url).netloc` fallback on line 300 with a call to MetadataFetcher's URL-path extraction (or leave empty and let the confirmation step handle it)
 - [ ] When no title can be determined, flag it in the result so the CLI/web can prompt the user
 - [ ] Write tests for the empty-metadata scenario
 
-### Task 3: Update tests
+### Task 4: Update tests
 
 **Files:** `tests/unit/test_metadata_fetcher.py`, `tests/unit/test_bookmark_service.py`
 
 - [ ] Test MetadataFetcher with og:title fallback
 - [ ] Test MetadataFetcher with h1 fallback
+- [ ] Test URL-path title extraction (Medium, Substack, generic slugs)
 - [ ] Test BookmarkService no longer produces domain-name titles
 - [ ] Test BookmarkService flags missing title in result
