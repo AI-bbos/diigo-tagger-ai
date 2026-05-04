@@ -442,6 +442,66 @@ class BookmarkService:
             "display_id": display_id
         }
 
+    def _resolve_conflict(
+        self,
+        prepared: Dict,
+        conflict_resolution: Optional[str],
+        user_title: Optional[str],
+        user_description: Optional[str],
+    ) -> tuple:
+        """Apply conflict resolution strategy to determine final bookmark values.
+
+        Parses a 3-character resolution code (or legacy word code) and resolves
+        each field (title, description, tags) between existing and new values.
+
+        Args:
+            prepared: Prepared bookmark dict from prepare_bookmark()
+            conflict_resolution: 3-char code (e.g., 'nns') or legacy word
+                ('keep', 'replace', 'merge'). None means use new values as-is.
+            user_title: Original user-provided title (for smart resolution)
+            user_description: Original user-provided description (for smart resolution)
+
+        Returns:
+            Tuple of (final_title, final_description, final_tags)
+        """
+        final_title = prepared["title"]
+        final_description = prepared["description"]
+        final_tags = prepared["tags"]
+
+        if not (prepared["conflict"] and conflict_resolution):
+            return final_title, final_description, final_tags
+
+        existing_data = prepared["conflict"]["existing"]
+        existing_tags = existing_data["tags"]
+        existing_title = existing_data["title"]
+        existing_description = existing_data["description"]
+
+        # Parse resolution code
+        if len(conflict_resolution) == 3:
+            title_res, desc_res, tags_res = conflict_resolution[0], conflict_resolution[1], conflict_resolution[2]
+        else:
+            legacy_map = {'keep': 'ooo', 'replace': 'nnn', 'merge': 'sss'}
+            code = legacy_map.get(conflict_resolution, 'ooo')
+            title_res, desc_res, tags_res = code[0], code[1], code[2]
+
+        # Resolve each field
+        if title_res == 'o':
+            final_title = existing_title
+        elif title_res == 's':
+            final_title = user_title or existing_title
+
+        if desc_res == 'o':
+            final_description = existing_description
+        elif desc_res == 's':
+            final_description = user_description or existing_description
+
+        if tags_res == 'o':
+            final_tags = existing_tags
+        elif tags_res == 's':
+            final_tags = list(set(existing_tags + final_tags))
+
+        return final_title, final_description, final_tags
+
     def add_bookmark(
         self,
         url: str,
@@ -539,58 +599,21 @@ class BookmarkService:
             return result
 
         # Determine final values based on conflict resolution strategy
-        final_title = prepared["title"]
-        final_description = prepared["description"]
-        final_tags = prepared["tags"]
+        final_title, final_description, final_tags = self._resolve_conflict(
+            prepared, conflict_resolution, title, description
+        )
 
-        if prepared["conflict"] and conflict_resolution:
+        # If keeping everything original, return without submitting
+        if (conflict_resolution == 'ooo' and prepared["conflict"]):
             existing_data = prepared["conflict"]["existing"]
-            existing_tags = existing_data["tags"]
-            existing_title = existing_data["title"]
-            existing_description = existing_data["description"]
-            existing_display_id = existing_data["display_id"]
-
-            # Parse 3-character resolution code
-            if len(conflict_resolution) == 3:
-                title_res, desc_res, tags_res = conflict_resolution[0], conflict_resolution[1], conflict_resolution[2]
-            else:
-                if conflict_resolution == 'keep':
-                    title_res, desc_res, tags_res = 'o', 'o', 'o'
-                elif conflict_resolution == 'replace':
-                    title_res, desc_res, tags_res = 'n', 'n', 'n'
-                elif conflict_resolution == 'merge':
-                    title_res, desc_res, tags_res = 's', 's', 's'
-                else:
-                    title_res, desc_res, tags_res = 'o', 'o', 'o'
-
-            # Resolve title
-            if title_res == 'o':
-                final_title = existing_title
-            elif title_res == 's':
-                final_title = title or existing_title
-
-            # Resolve description
-            if desc_res == 'o':
-                final_description = existing_description
-            elif desc_res == 's':
-                final_description = description or existing_description
-
-            # Resolve tags
-            if tags_res == 'o':
-                final_tags = existing_tags
-            elif tags_res == 's':
-                final_tags = list(set(existing_tags + final_tags))
-
-            # Check if keeping everything original
-            if conflict_resolution == 'ooo':
-                return {
-                    "url": url,
-                    "title": existing_title,
-                    "description": existing_description,
-                    "tags": existing_tags,
-                    "display_id": existing_display_id,
-                    "action": "kept_original"
-                }
+            return {
+                "url": url,
+                "title": existing_data["title"],
+                "description": existing_data["description"],
+                "tags": existing_data["tags"],
+                "display_id": existing_data["display_id"],
+                "action": "kept_original"
+            }
 
         # Submit phase: call Diigo API and save to DB
         result = self.submit_bookmark(
