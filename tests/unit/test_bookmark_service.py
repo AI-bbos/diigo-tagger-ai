@@ -262,14 +262,17 @@ class TestBookmarkServiceAdd:
         )
         existing_bookmark.tags = [existing_tag]
 
-        # prepare_bookmark queries once (bookmark check), submit_bookmark queries once
-        # (bookmark check), then tag lookups in submit_bookmark
+        # prepare_bookmark queries: bookmark check + tag count lookups,
+        # submit_bookmark queries: bookmark check + tag lookups
         mock_session.query.return_value.filter_by.return_value.first.side_effect = [
             existing_bookmark,  # prepare_bookmark: check if bookmark exists
+            None,  # _get_tag_counts: lookup "new-tag"
             existing_bookmark,  # submit_bookmark: check if bookmark exists
             None,  # submit_bookmark: tag lookup for "old-tag"
             None,  # submit_bookmark: tag lookup for "new-tag"
         ]
+        # _get_tag_counts uses select_from().filter().scalar() — mock returns 0
+        mock_session.query.return_value.select_from.return_value.filter.return_value.scalar.return_value = 0
 
         mock_diigo_client.create_bookmark.return_value = {"success": True}
 
