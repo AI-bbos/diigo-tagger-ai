@@ -273,6 +273,7 @@
 <script>
 // State
 let preparedUrl = '';
+let tagCounts = {};
 const previewTagsSet = new Set();
 
 // DOM elements
@@ -351,7 +352,8 @@ function showPreview(data) {
         document.getElementById('title-warning').classList.add('hidden');
     }
 
-    // Tags
+    // Tags and counts
+    tagCounts = data.tag_counts || {};
     previewTagsSet.clear();
     (data.tags || []).forEach(t => previewTagsSet.add(t));
     renderPreviewTags();
@@ -366,9 +368,10 @@ function showPreview(data) {
         const unusedTags = llmSuggestions.tags.filter(t => !previewTagsSet.has(t));
         if (unusedTags.length > 0) {
             llmContainer.classList.remove('hidden');
-            llmTagsContainer.innerHTML = unusedTags.map(t =>
-                `<span class="llm-tag-chip" onclick="addPreviewTagFromLLM('${t.replace(/'/g, "\\'")}')">${t} +</span>`
-            ).join('');
+            llmTagsContainer.innerHTML = unusedTags.map(t => {
+                const count = tagCounts[t] !== undefined ? tagCounts[t] : '?';
+                return `<span class="llm-tag-chip" onclick="addPreviewTagFromLLM('${t.replace(/'/g, "\\'")}')">${t} <span class="text-green-500 text-xs">(${count})</span> +</span>`;
+            }).join('');
         } else {
             llmContainer.classList.add('hidden');
         }
@@ -411,7 +414,8 @@ function renderPreviewTags() {
     previewTagsSet.forEach(tag => {
         const chip = document.createElement('span');
         chip.className = 'tag-chip';
-        chip.innerHTML = `${tag}<span class="tag-chip-remove" onclick="removePreviewTag('${tag.replace(/'/g, "\\'")}')">&times;</span>`;
+        const count = tagCounts[tag] !== undefined ? tagCounts[tag] : '?';
+        chip.innerHTML = `${tag} <span class="text-indigo-400 text-xs">(${count})</span><span class="tag-chip-remove" onclick="removePreviewTag('${tag.replace(/'/g, "\\'")}')">&times;</span>`;
         previewTagsContainer.appendChild(chip);
     });
 }

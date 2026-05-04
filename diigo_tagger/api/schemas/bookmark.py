@@ -2,7 +2,7 @@
 # ABOUTME: Request/response models for creating, listing, and searching bookmarks
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -94,6 +94,7 @@ class PrepareBookmarkResponse(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
+    tag_counts: Dict[str, int] = Field(default_factory=dict, description="Bookmark count per tag name")
     title_missing: bool = False
     llm_suggestions: Optional[LLMSuggestions] = None
     conflict: Optional[dict] = None

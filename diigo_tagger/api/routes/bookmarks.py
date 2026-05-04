@@ -283,6 +283,7 @@ async def prepare_bookmark(request: AddBookmarkRequest):
             title=result["title"],
             description=result["description"],
             tags=result["tags"],
+            tag_counts=result.get("tag_counts", {}),
             title_missing=result.get("title_missing", False),
             llm_suggestions=llm_suggestions,
             conflict=result.get("conflict"),

@@ -197,6 +197,38 @@ class BookmarkService:
         logger.info(f"Sync complete: downloaded={downloaded}, new={new_bookmarks}, updated={updated_bookmarks}, new_tags={new_tags}, updated_tags={updated_tags}")
         return downloaded, new_bookmarks, updated_bookmarks, new_tags, updated_tags
 
+    def _get_tag_counts(self, tag_names: List[str]) -> Dict[str, int]:
+        """Look up the number of bookmarks using each tag.
+
+        Queries the bookmark_tags association table for accurate counts
+        rather than relying on the potentially stale Tag.count column.
+
+        Args:
+            tag_names: List of tag name strings to look up.
+
+        Returns:
+            Dict mapping tag name to bookmark count. Tags not in the
+            database return 0.
+        """
+        if not tag_names:
+            return {}
+
+        from ..models import bookmark_tags
+        counts = {}
+        for tag_name in tag_names:
+            tag = self.session.query(Tag).filter_by(name=tag_name.strip().lower()).first()
+            if tag:
+                count = (
+                    self.session.query(func.count())
+                    .select_from(bookmark_tags)
+                    .filter(bookmark_tags.c.tag_id == tag.id)
+                    .scalar()
+                )
+                counts[tag_name] = count
+            else:
+                counts[tag_name] = 0
+        return counts
+
     def prepare_bookmark(
         self,
         url: str,
@@ -303,12 +335,17 @@ class BookmarkService:
         if llm_tags:
             final_tags.extend(llm_tags)
 
+        # Look up usage counts for all tags (final + LLM suggestions)
+        all_tag_names = list(set(final_tags + llm_tags))
+        tag_counts = self._get_tag_counts(all_tag_names)
+
         # Build result
         result = {
             "url": url,
             "title": final_title,
             "description": final_description,
             "tags": final_tags,
+            "tag_counts": tag_counts,
             "title_missing": title_missing,
             "llm_suggestions": {
                 "title": llm_title,
