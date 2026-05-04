@@ -142,3 +142,22 @@ class Bookmark(Base):
 
     def __repr__(self):
         return f"<Bookmark(display_id='{self.display_id}', url='{self.url[:50]}...', title='{self.title}')>"
+
+
+class Setting(Base):
+    """Key-value settings stored in the database.
+
+    Provides a simple persistence layer for application configuration such as
+    tag prefixes and other user-adjustable options.  The primary key is the
+    setting name (``key``), so each name is unique and upserts are trivial.
+    """
+
+    __tablename__ = "settings"
+
+    key = Column(String, primary_key=True)
+    value = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<Setting(key='{self.key}', value='{self.value[:40]}')>"
