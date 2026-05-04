@@ -184,7 +184,10 @@ class MetadataFetcher:
             return ""
 
         # Replace hyphens with spaces and title-case
-        title = segment.replace("-", " ").title()
+        # Use a custom approach to avoid Python's .title() capitalizing after digits
+        # (e.g., "20s" becoming "20S")
+        words = segment.replace("-", " ").split()
+        title = " ".join(w.capitalize() for w in words)
         return title
 
     def _fetch_webpage_metadata(self, url: str) -> Dict[str, any]:

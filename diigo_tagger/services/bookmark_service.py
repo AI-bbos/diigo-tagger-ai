@@ -505,8 +505,17 @@ class BookmarkService:
         # Prepare phase: fetch metadata, generate LLM suggestions, check conflicts
         prepared = self.prepare_bookmark(url, title, description, tags)
 
-        # If bookmark exists and user didn't provide any overrides, no changes needed
+        # If bookmark exists and user didn't provide any overrides, ensure it
+        # exists in Diigo (may have been deleted externally) then return
         if prepared["conflict"] and prepared["conflict"].get("no_changes"):
+            # Re-submit to Diigo to ensure it exists there too
+            self.submit_bookmark(
+                url=url,
+                title=prepared["title"],
+                description=prepared["description"] or "",
+                tags=prepared["tags"],
+                shared=shared,
+            )
             return {
                 "no_changes": True,
                 "url": url,
