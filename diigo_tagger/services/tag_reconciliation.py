@@ -1,6 +1,7 @@
 # ABOUTME: Tag reconciliation service for deduplication and merging
-# ABOUTME: Handles wildcard search (FTS5), semantic similarity, and tag normalization
+# ABOUTME: Handles wildcard search (FTS5), semantic similarity, string similarity, and tag normalization
 
+import difflib
 from typing import List
 from datetime import datetime
 import numpy as np
@@ -241,6 +242,82 @@ class TagReconciliationService:
         # Sort by similarity (highest first) and limit
         similarities.sort(key=lambda x: x[1], reverse=True)
         return [tag for tag, _ in similarities[:limit]]
+
+    def match_existing_tags(
+        self, suggested_tags: List[str], threshold: float = 0.5
+    ) -> List[dict]:
+        """Match suggested tags against existing tags in the database.
+
+        Uses string similarity to find near-duplicates. Returns match info
+        with confidence scores for UI to decide presentation.
+
+        Action tiers:
+          - "auto_accept" (similarity >= 0.8): use the existing tag instead
+          - "confirm"  (threshold <= similarity < 0.8): show for user confirmation
+          - "new"      (similarity < threshold): treat as a brand-new tag
+
+        Args:
+            suggested_tags: List of tag names to check.
+            threshold: Minimum similarity to consider a match (default 0.5).
+
+        Returns:
+            List of dicts, one per suggested tag, each containing:
+              - suggested: Original suggested tag name.
+              - matched: Best matching existing tag name, or None if below threshold.
+              - similarity: Best match score (0.0–1.0).
+              - candidates: List of dicts [{name, similarity}] for all existing tags
+                scoring above 0.65, ranked highest first.
+              - action: "auto_accept", "confirm", or "new".
+        """
+        # Fetch all existing tags once to avoid repeated DB hits
+        existing_tags = self.session.query(Tag).all()
+        existing_names = [t.name for t in existing_tags]
+
+        results = []
+
+        for suggested in suggested_tags:
+            normalized_suggested = self.normalize_tag(suggested)
+
+            best_match: str | None = None
+            best_score: float = 0.0
+            candidates: list[dict] = []
+
+            for name in existing_names:
+                normalized_name = self.normalize_tag(name)
+                score = difflib.SequenceMatcher(
+                    None, normalized_suggested, normalized_name
+                ).ratio()
+
+                if score > best_score:
+                    best_score = score
+                    best_match = name
+
+                if score > 0.65:
+                    candidates.append({"name": name, "similarity": score})
+
+            # Sort candidates by similarity descending
+            candidates.sort(key=lambda c: c["similarity"], reverse=True)
+
+            # Determine action tier
+            if best_score < threshold:
+                action = "new"
+                best_match = None
+            elif best_score >= 0.8:
+                action = "auto_accept"
+            else:
+                action = "confirm"
+
+            results.append(
+                {
+                    "suggested": suggested,
+                    "matched": best_match,
+                    "similarity": best_score,
+                    "candidates": candidates,
+                    "action": action,
+                }
+            )
+
+        return results
 
     def search_tags(
         self,
