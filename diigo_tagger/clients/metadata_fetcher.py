@@ -209,6 +209,7 @@ class MetadataFetcher:
                 "description": "",
                 "keywords": [],
                 "content_type": "webpage",
+                "has_article_tag": False,
                 "error": "requests or beautifulsoup4 not installed"
             }
 
@@ -277,11 +278,15 @@ class MetadataFetcher:
                 if tag.get('property') == 'og:type':
                     keywords.append(tag.get('content', ''))
 
+            # Detect <article> element for format:article tagging
+            has_article_tag = soup.find('article') is not None
+
             return {
                 "title": title,
                 "description": description,
                 "keywords": [k for k in keywords if k],  # Filter empty
-                "content_type": "webpage"
+                "content_type": "webpage",
+                "has_article_tag": has_article_tag
             }
 
         except Exception as e:
@@ -291,5 +296,6 @@ class MetadataFetcher:
                 "description": "",
                 "keywords": [],
                 "content_type": "webpage",
+                "has_article_tag": False,
                 "error": str(e)
             }

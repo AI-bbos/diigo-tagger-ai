@@ -354,6 +354,40 @@ class TestTitleFallbackChain:
         assert "DiigoTagger" not in ua
 
 
+class TestArticleDetection:
+    """Test <article> element detection in webpage metadata."""
+
+    @patch("diigo_tagger.clients.metadata_fetcher.requests.get")
+    def test_detects_article_element(self, mock_get):
+        """Should set has_article_tag when <article> element found."""
+        html = b"""<html><head><title>Article Page</title></head>
+        <body><article><p>Content here.</p></article></body></html>"""
+        mock_response = Mock()
+        mock_response.content = html
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        fetcher = MetadataFetcher()
+        result = fetcher._fetch_webpage_metadata("https://example.com/article")
+
+        assert result["has_article_tag"] is True
+
+    @patch("diigo_tagger.clients.metadata_fetcher.requests.get")
+    def test_no_article_element(self, mock_get):
+        """Should set has_article_tag=False when no <article> element."""
+        html = b"""<html><head><title>Regular Page</title></head>
+        <body><div><p>Content here.</p></div></body></html>"""
+        mock_response = Mock()
+        mock_response.content = html
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        fetcher = MetadataFetcher()
+        result = fetcher._fetch_webpage_metadata("https://example.com/page")
+
+        assert result["has_article_tag"] is False
+
+
 class TestTitleFromUrlPath:
     """Test URL path slug to title conversion."""
 
