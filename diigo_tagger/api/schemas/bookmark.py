@@ -88,6 +88,27 @@ class AddBookmarkSuccessResponse(BaseModel):
     action: Optional[str] = None  # "kept_original" or None
 
 
+class PrepareBookmarkResponse(BaseModel):
+    """Preview of prepared bookmark data before submission."""
+    url: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    title_missing: bool = False
+    llm_suggestions: Optional[LLMSuggestions] = None
+    conflict: Optional[dict] = None
+    display_id: str
+
+
+class SubmitBookmarkRequest(BaseModel):
+    """Request to submit a prepared bookmark."""
+    url: str = Field(..., min_length=1, description="Bookmark URL")
+    title: str = Field(..., description="Resolved title to submit")
+    description: Optional[str] = Field(None, description="Resolved description")
+    tags: List[str] = Field(default_factory=list, description="Final tags to submit")
+    shared: bool = Field(True, description="Whether bookmark is public")
+
+
 class ResolveConflictRequest(BaseModel):
     """Request to resolve bookmark conflict with 3-character code."""
     url: str = Field(..., min_length=1, description="Bookmark URL")

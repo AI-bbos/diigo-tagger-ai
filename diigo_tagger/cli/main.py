@@ -6,7 +6,7 @@ import os
 import subprocess
 import click
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 from contextlib import contextmanager
 
 
@@ -381,14 +381,18 @@ def list(limit: int, source: Optional[str], sort: str, db_path: Optional[str]):
 @click.option("--outline", help="Diigo outliner content")
 @click.option("--groups", help="Comma-separated Diigo group names")
 @click.option("--shared/--private", default=True, help="Make bookmark public (default) or private")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt (for scripting)")
 @click.option("--db-path", type=click.Path(), help="Path to database file")
 @handle_cli_errors
 def add(url: str, title: Optional[str], description: Optional[str], tags: Optional[str],
-        outline: Optional[str], groups: Optional[str], shared: bool, db_path: Optional[str]):
+        outline: Optional[str], groups: Optional[str], shared: bool, yes: bool,
+        db_path: Optional[str]):
     """Add bookmark to Diigo with LLM-powered defaults and conflict resolution.
 
     LLM generates tags from URL. If title/description not provided, uses domain as fallback.
     User-provided tags supplement LLM-generated tags.
+
+    Shows a preview and prompts for confirmation before submitting. Use --yes/-y to skip.
 
     If bookmark already exists, shows side-by-side comparison and prompts for resolution:
     - Quick options: keep all, replace all, smart merge all
@@ -422,57 +426,55 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
     # Parse tags
     tag_list = [t.strip() for t in tags.split(',')] if tags else None
 
-    # Use service to add bookmark
+    # Prepare bookmark (fetch metadata, generate suggestions, check conflicts)
     from ..services.bookmark_service import BookmarkService
     click.echo(f"Adding bookmark: {url}")
     with db_session_manager(db_path) as session:
         service = BookmarkService(session, diigo_client, openai_client)
-        result = service.add_bookmark(
+        preview = service.prepare_bookmark(
             url=url,
             title=title,
             description=description,
             tags=tag_list,
-            outline=outline,
-            groups=groups,
-            shared=shared
         )
 
         # Handle no changes (bookmark exists, no args passed)
-        if result.get('no_changes'):
+        if preview.get('conflict') and preview['conflict'].get('no_changes'):
             click.echo("\n✓ Bookmark already exists (no changes)")
-            click.echo(f"  Display ID: {result['display_id']}")
-            click.echo(f"  Title: {result['title']}")
-            if result.get('description'):
-                click.echo(f"  Description: {result['description'][:100]}...")
-            click.echo(f"  Tags: {', '.join(result['tags'])}")
+            click.echo(f"  Display ID: {preview['display_id']}")
+            click.echo(f"  Title: {preview['title']}")
+            if preview.get('description'):
+                click.echo(f"  Description: {preview['description'][:100]}...")
+            click.echo(f"  Tags: {', '.join(preview['tags'])}")
             click.echo("\n💡 Tip: To update, use --title, --description, or --tags")
             return
 
         # Handle conflict (bookmark exists, args passed with differences)
-        if result.get('conflict'):
+        if preview.get('conflict'):
+            conflict = preview['conflict']
             click.echo("\n⚠ Bookmark already exists!")
-            click.echo(f"  Display ID: {result['existing']['display_id']}")
+            click.echo(f"  Display ID: {conflict['existing']['display_id']}")
 
             # Show differences
             click.echo("\n📋 Current vs New:")
 
             # Only show title if different
-            if result['existing']['title'] != result['new']['title']:
+            if conflict['existing']['title'] != conflict['new']['title']:
                 click.echo(f"\n  Title:")
-                click.echo(f"    Current: {result['existing']['title']}")
-                click.echo(f"    New:     {result['new']['title']}")
+                click.echo(f"    Current: {conflict['existing']['title']}")
+                click.echo(f"    New:     {conflict['new']['title']}")
 
             # Only show description if different
-            existing_desc = result['existing']['description']
-            new_desc = result['new']['description']
+            existing_desc = conflict['existing']['description']
+            new_desc = conflict['new']['description']
             if existing_desc != new_desc:
                 click.echo(f"\n  Description:")
                 click.echo(f"    Current: {existing_desc[:80] if existing_desc else '(none)'}...")
                 click.echo(f"    New:     {new_desc[:80] if new_desc else '(none)'}...")
 
             click.echo(f"\n  Tags:")
-            existing_set = set(result['existing']['tags'])
-            new_set = set(result['new']['tags'])
+            existing_set = set(conflict['existing']['tags'])
+            new_set = set(conflict['new']['tags'])
             only_existing = existing_set - new_set
             only_new = new_set - existing_set
             common = existing_set & new_set
@@ -541,7 +543,7 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
                         click.echo("Invalid input. Enter 1-5 or a 3-character code (n/o/s).")
                         continue
 
-            # Call service again with resolution code
+            # Call service with resolution code via add_bookmark (handles merge logic)
             result = service.add_bookmark(
                 url=url,
                 title=title,
@@ -553,18 +555,118 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
                 conflict_resolution=resolution_code
             )
 
-    # Display results
-    action = result.get('action', 'added')
-    if action == 'kept_original':
-        click.echo(f"\n✓ Kept original bookmark")
-    else:
-        click.echo(f"\n✓ Bookmark {action} successfully!")
+            # Display conflict resolution results
+            action = result.get('action', 'added')
+            if action == 'kept_original':
+                click.echo(f"\n✓ Kept original bookmark")
+            else:
+                click.echo(f"\n✓ Bookmark {action} successfully!")
 
+            click.echo(f"  Display ID: {result['display_id']}")
+            click.echo(f"  Title: {result['title']}")
+            if result.get('description'):
+                click.echo(f"  Description: {result['description'][:100]}...")
+            click.echo(f"  Tags: {', '.join(result['tags'])}")
+            return
+
+        # New bookmark — show preview and prompt for confirmation
+        final_title = preview['title']
+        final_description = preview['description']
+        final_tags = preview['tags']
+
+        _display_bookmark_preview(url, final_title, final_description, final_tags)
+
+        if preview.get('title_missing'):
+            click.echo("  ⚠ No title found — you may want to edit before submitting")
+
+        # Skip confirmation if --yes flag is set
+        if not yes:
+            final_title, final_description, final_tags = _prompt_bookmark_confirmation(
+                final_title, final_description, final_tags
+            )
+
+        # Submit the bookmark
+        result = service.submit_bookmark(
+            url=url,
+            title=final_title or "Untitled",
+            description=final_description or "",
+            tags=final_tags,
+            shared=shared,
+            outline=outline,
+            groups=groups,
+        )
+
+    # Display success
+    click.echo(f"\n✓ Bookmark added successfully!")
     click.echo(f"  Display ID: {result['display_id']}")
     click.echo(f"  Title: {result['title']}")
     if result.get('description'):
         click.echo(f"  Description: {result['description'][:100]}...")
     click.echo(f"  Tags: {', '.join(result['tags'])}")
+
+
+def _display_bookmark_preview(url: str, title: Optional[str], description: Optional[str],
+                              tags: List[str]):
+    """Display a formatted bookmark preview.
+
+    Args:
+        url: Bookmark URL
+        title: Resolved title (may be None)
+        description: Resolved description (may be None)
+        tags: List of tags to display
+    """
+    desc_display = description[:100] + "..." if description and len(description) > 100 else (description or "(none)")
+    click.echo(f"\n📋 Bookmark Preview:")
+    click.echo(f"  URL:         {url}")
+    click.echo(f"  Title:       {title or '(none)'}")
+    click.echo(f"  Description: {desc_display}")
+    click.echo(f"  Tags:        {', '.join(tags) if tags else '(none)'}")
+    click.echo()
+
+
+def _prompt_bookmark_confirmation(title: Optional[str], description: Optional[str],
+                                  tags: List[str]) -> tuple:
+    """Prompt user for confirmation before submitting a bookmark.
+
+    Offers submit, edit, or cancel options. If edit is chosen, prompts for
+    new values with current values pre-filled as defaults.
+
+    Args:
+        title: Current title value
+        description: Current description value
+        tags: Current list of tags
+
+    Returns:
+        Tuple of (title, description, tags) — possibly edited by user.
+
+    Raises:
+        click.Abort: If user chooses to cancel.
+    """
+    while True:
+        choice = click.prompt(
+            "Submit? [Y]es / [e]dit / [c]ancel",
+            type=str,
+            default="y"
+        ).lower().strip()
+
+        if choice in ("y", "yes"):
+            return title, description, tags
+
+        elif choice in ("c", "cancel"):
+            click.echo("Cancelled")
+            raise click.Abort()
+
+        elif choice in ("e", "edit"):
+            title = click.prompt("  Title", default=title or "")
+            description = click.prompt("  Description", default=description or "")
+            tags_str = click.prompt("  Tags (comma-separated)", default=", ".join(tags) if tags else "")
+            tags = [t.strip() for t in tags_str.split(",") if t.strip()]
+
+            # Show updated preview
+            _display_bookmark_preview("(see above)", title, description, tags)
+
+        else:
+            click.echo("Invalid choice. Enter Y, e, or c.")
 
 
 @cli.command()

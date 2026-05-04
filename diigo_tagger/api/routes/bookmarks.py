@@ -20,6 +20,8 @@ from ..schemas.bookmark import (
     AddBookmarkSuccessResponse,
     ConflictResponse,
     ResolveConflictRequest,
+    PrepareBookmarkResponse,
+    SubmitBookmarkRequest,
     LLMSuggestions,
     ExistingBookmark,
     NewBookmark
@@ -225,6 +227,125 @@ async def add_bookmark(request: AddBookmarkRequest):
             display_id=result["display_id"],
             llm_suggestions=llm_suggestions,
             action=result.get("action")
+        )
+
+    finally:
+        session.close()
+
+
+@router.post("/bookmarks/prepare", response_model=PrepareBookmarkResponse)
+async def prepare_bookmark(request: AddBookmarkRequest):
+    """
+    Prepare a bookmark without submitting to Diigo.
+
+    Fetches metadata, generates LLM suggestions, checks for conflicts.
+    Returns preview data for the user to review before final submission.
+    """
+    session = get_session()
+
+    try:
+        api_key = os.getenv("DIIGO_API_KEY")
+        username = os.getenv("DIIGO_USERNAME")
+        password = os.getenv("DIIGO_PASSWORD")
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+
+        if not all([api_key, username, password]):
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "detail": "Missing Diigo credentials",
+                    "error_code": "MISSING_CREDENTIALS"
+                }
+            )
+
+        diigo_client = DiigoClient(api_key=api_key, username=username, password=password)
+        openai_client = OpenAIClient(api_key=openai_api_key) if openai_api_key else None
+
+        service = BookmarkService(
+            session=session,
+            diigo_client=diigo_client,
+            openai_client=openai_client
+        )
+
+        result = service.prepare_bookmark(
+            url=request.url,
+            title=request.title,
+            description=request.description,
+            tags=request.tags,
+        )
+
+        llm_suggestions = None
+        if result.get("llm_suggestions"):
+            llm_suggestions = LLMSuggestions(**result["llm_suggestions"])
+
+        return PrepareBookmarkResponse(
+            url=result["url"],
+            title=result["title"],
+            description=result["description"],
+            tags=result["tags"],
+            title_missing=result.get("title_missing", False),
+            llm_suggestions=llm_suggestions,
+            conflict=result.get("conflict"),
+            display_id=result["display_id"],
+        )
+
+    finally:
+        session.close()
+
+
+@router.post("/bookmarks/submit", response_model=AddBookmarkSuccessResponse)
+async def submit_bookmark(request: SubmitBookmarkRequest):
+    """
+    Submit a prepared bookmark to Diigo and save to database.
+
+    Call this after reviewing the preview from /bookmarks/prepare.
+    """
+    session = get_session()
+
+    try:
+        api_key = os.getenv("DIIGO_API_KEY")
+        username = os.getenv("DIIGO_USERNAME")
+        password = os.getenv("DIIGO_PASSWORD")
+
+        if not all([api_key, username, password]):
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "detail": "Missing Diigo credentials",
+                    "error_code": "MISSING_CREDENTIALS"
+                }
+            )
+
+        diigo_client = DiigoClient(api_key=api_key, username=username, password=password)
+
+        service = BookmarkService(
+            session=session,
+            diigo_client=diigo_client,
+        )
+
+        try:
+            result = service.submit_bookmark(
+                url=request.url,
+                title=request.title,
+                description=request.description or "",
+                tags=request.tags,
+                shared=request.shared,
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "detail": str(e),
+                    "error_code": "DIIGO_API_ERROR"
+                }
+            )
+
+        return AddBookmarkSuccessResponse(
+            url=result["url"],
+            title=result["title"],
+            description=result["description"],
+            tags=result["tags"],
+            display_id=result["display_id"],
         )
 
     finally:

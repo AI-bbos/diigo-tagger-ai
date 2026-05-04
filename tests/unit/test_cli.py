@@ -259,19 +259,25 @@ class TestCLIAdd:
     @patch("diigo_tagger.clients.openai_client.OpenAIClient")
     @patch("diigo_tagger.db.get_session")
     def test_add_bookmark_success(self, mock_session, mock_openai_class, mock_diigo_class, mock_service_class):
-        """Should add bookmark successfully."""
+        """Should add bookmark successfully with --yes flag (skip confirmation)."""
         # Mock service
         mock_service = Mock()
-        mock_service.add_bookmark.return_value = {
-            "action": "added",
-            "display_id": "abc12345",
+        mock_service.prepare_bookmark.return_value = {
+            "url": "https://example.com",
             "title": "Test Bookmark",
             "description": "Test Description",
             "tags": ["python", "test"],
-            "llm_suggestions": {
-                "title": "LLM Title",
-                "tags": ["python", "test"]
-            }
+            "title_missing": False,
+            "llm_suggestions": {"title": "LLM Title", "description": None, "tags": ["python", "test"]},
+            "conflict": None,
+            "display_id": "abc12345",
+        }
+        mock_service.submit_bookmark.return_value = {
+            "url": "https://example.com",
+            "title": "Test Bookmark",
+            "description": "Test Description",
+            "tags": ["python", "test"],
+            "display_id": "abc12345",
         }
         mock_service_class.return_value = mock_service
 
@@ -282,7 +288,7 @@ class TestCLIAdd:
         runner = CliRunner()
         result = runner.invoke(
             cli,
-            ["add", "--url", "https://example.com", "--title", "Test Bookmark"],
+            ["add", "--url", "https://example.com", "--title", "Test Bookmark", "--yes"],
             env={
                 "DIIGO_API_KEY": "test-key",
                 "DIIGO_USERNAME": "test-user",
@@ -295,7 +301,8 @@ class TestCLIAdd:
         assert "successfully" in result.output.lower()
         assert "abc12345" in result.output
         assert "Test Bookmark" in result.output
-        mock_service.add_bookmark.assert_called_once()
+        mock_service.prepare_bookmark.assert_called_once()
+        mock_service.submit_bookmark.assert_called_once()
 
     @patch("diigo_tagger.services.bookmark_service.BookmarkService")
     @patch("diigo_tagger.clients.diigo_client.DiigoClient")
@@ -306,11 +313,15 @@ class TestCLIAdd:
         # Mock service
         mock_service = Mock()
 
-        # First call returns conflict
-        # Second call (after resolution) returns result
-        mock_service.add_bookmark.side_effect = [
-            {
-                "conflict": True,
+        # prepare_bookmark returns conflict
+        mock_service.prepare_bookmark.return_value = {
+            "url": "https://example.com",
+            "title": "New Title",
+            "description": "New Description",
+            "tags": ["new-tag"],
+            "title_missing": False,
+            "llm_suggestions": {"title": None, "description": None, "tags": []},
+            "conflict": {
                 "existing": {
                     "display_id": "abc12345",
                     "title": "Old Title",
@@ -323,14 +334,17 @@ class TestCLIAdd:
                     "tags": ["new-tag"]
                 }
             },
-            {
-                "action": "kept_original",
-                "display_id": "abc12345",
-                "title": "Old Title",
-                "description": "Old Description",
-                "tags": ["old-tag"]
-            }
-        ]
+            "display_id": "abc12345",
+        }
+
+        # add_bookmark called with conflict_resolution returns resolved result
+        mock_service.add_bookmark.return_value = {
+            "action": "kept_original",
+            "display_id": "abc12345",
+            "title": "Old Title",
+            "description": "Old Description",
+            "tags": ["old-tag"]
+        }
         mock_service_class.return_value = mock_service
 
         # Mock session manager
@@ -354,7 +368,8 @@ class TestCLIAdd:
         assert "already exists" in result.output.lower()
         assert "Old Title" in result.output
         assert "New Title" in result.output
-        assert mock_service.add_bookmark.call_count == 2
+        mock_service.prepare_bookmark.assert_called_once()
+        mock_service.add_bookmark.assert_called_once()
 
     @patch("diigo_tagger.services.bookmark_service.BookmarkService")
     @patch("diigo_tagger.clients.diigo_client.DiigoClient")
@@ -365,11 +380,15 @@ class TestCLIAdd:
         # Mock service
         mock_service = Mock()
 
-        # First call returns conflict
-        # Second call (after resolution) returns result
-        mock_service.add_bookmark.side_effect = [
-            {
-                "conflict": True,
+        # prepare_bookmark returns conflict
+        mock_service.prepare_bookmark.return_value = {
+            "url": "https://example.com",
+            "title": "New Title",
+            "description": "New Description",
+            "tags": ["new-tag", "python"],
+            "title_missing": False,
+            "llm_suggestions": {"title": None, "description": None, "tags": []},
+            "conflict": {
                 "existing": {
                     "display_id": "abc12345",
                     "title": "Old Title",
@@ -382,14 +401,17 @@ class TestCLIAdd:
                     "tags": ["new-tag", "python"]
                 }
             },
-            {
-                "action": "updated",
-                "display_id": "abc12345",
-                "title": "New Title",
-                "description": "New Description",
-                "tags": ["old-tag", "new-tag", "python"]
-            }
-        ]
+            "display_id": "abc12345",
+        }
+
+        # add_bookmark called with conflict_resolution
+        mock_service.add_bookmark.return_value = {
+            "action": "updated",
+            "display_id": "abc12345",
+            "title": "New Title",
+            "description": "New Description",
+            "tags": ["old-tag", "new-tag", "python"]
+        }
         mock_service_class.return_value = mock_service
 
         # Mock session manager
@@ -410,9 +432,10 @@ class TestCLIAdd:
         )
 
         assert result.exit_code == 0
-        assert mock_service.add_bookmark.call_count == 2
-        # Verify second call received conflict_resolution parameter
-        assert mock_service.add_bookmark.call_args_list[1][1]["conflict_resolution"] == "nns"
+        mock_service.prepare_bookmark.assert_called_once()
+        mock_service.add_bookmark.assert_called_once()
+        # Verify call received conflict_resolution parameter
+        assert mock_service.add_bookmark.call_args[1]["conflict_resolution"] == "nns"
 
     @patch("diigo_tagger.services.bookmark_service.BookmarkService")
     @patch("diigo_tagger.clients.diigo_client.DiigoClient")
@@ -422,19 +445,27 @@ class TestCLIAdd:
         """Should handle conflict cancellation."""
         # Mock service
         mock_service = Mock()
-        mock_service.add_bookmark.return_value = {
-            "conflict": True,
-            "existing": {
-                "display_id": "abc12345",
-                "title": "Old Title",
-                "description": "Old Description",
-                "tags": ["old-tag"]
+        mock_service.prepare_bookmark.return_value = {
+            "url": "https://example.com",
+            "title": "New Title",
+            "description": "New Description",
+            "tags": ["new-tag"],
+            "title_missing": False,
+            "llm_suggestions": {"title": None, "description": None, "tags": []},
+            "conflict": {
+                "existing": {
+                    "display_id": "abc12345",
+                    "title": "Old Title",
+                    "description": "Old Description",
+                    "tags": ["old-tag"]
+                },
+                "new": {
+                    "title": "New Title",
+                    "description": "New Description",
+                    "tags": ["new-tag"]
+                }
             },
-            "new": {
-                "title": "New Title",
-                "description": "New Description",
-                "tags": ["new-tag"]
-            }
+            "display_id": "abc12345",
         }
         mock_service_class.return_value = mock_service
 
@@ -457,7 +488,8 @@ class TestCLIAdd:
 
         assert result.exit_code == 1  # Aborted
         assert "Cancelled" in result.output or "cancelled" in result.output.lower()
-        assert mock_service.add_bookmark.call_count == 1  # Only first call
+        mock_service.prepare_bookmark.assert_called_once()
+        mock_service.add_bookmark.assert_not_called()  # Never reached submission
 
     @patch("diigo_tagger.services.bookmark_service.BookmarkService")
     @patch("diigo_tagger.clients.diigo_client.DiigoClient")
@@ -466,12 +498,22 @@ class TestCLIAdd:
         """Should work without OpenAI client (LLM features disabled)."""
         # Mock service
         mock_service = Mock()
-        mock_service.add_bookmark.return_value = {
-            "action": "added",
-            "display_id": "abc12345",
+        mock_service.prepare_bookmark.return_value = {
+            "url": "https://example.com",
             "title": "Test Bookmark",
             "description": "",
-            "tags": []
+            "tags": [],
+            "title_missing": False,
+            "llm_suggestions": {"title": None, "description": None, "tags": []},
+            "conflict": None,
+            "display_id": "abc12345",
+        }
+        mock_service.submit_bookmark.return_value = {
+            "url": "https://example.com",
+            "title": "Test Bookmark",
+            "description": "",
+            "tags": [],
+            "display_id": "abc12345",
         }
         mock_service_class.return_value = mock_service
 
@@ -482,7 +524,7 @@ class TestCLIAdd:
         runner = CliRunner()
         result = runner.invoke(
             cli,
-            ["add", "--url", "https://example.com", "--title", "Test Bookmark"],
+            ["add", "--url", "https://example.com", "--title", "Test Bookmark", "--yes"],
             env={
                 "DIIGO_API_KEY": "test-key",
                 "DIIGO_USERNAME": "test-user",

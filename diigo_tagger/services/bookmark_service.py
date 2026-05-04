@@ -197,6 +197,251 @@ class BookmarkService:
         logger.info(f"Sync complete: downloaded={downloaded}, new={new_bookmarks}, updated={updated_bookmarks}, new_tags={new_tags}, updated_tags={updated_tags}")
         return downloaded, new_bookmarks, updated_bookmarks, new_tags, updated_tags
 
+    def prepare_bookmark(
+        self,
+        url: str,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+    ) -> Dict:
+        """
+        Prepare bookmark data without submitting to Diigo.
+
+        Fetches metadata, generates LLM suggestions, and checks for conflicts.
+        Returns a preview dict for the caller to inspect before submission.
+
+        Args:
+            url: Bookmark URL (required)
+            title: Optional user-provided title
+            description: Optional user-provided description
+            tags: Optional list of user-provided tags
+
+        Returns:
+            Dict with prepared bookmark preview:
+            {
+                "url": str,
+                "title": str,  # resolved title (may be None if title_missing)
+                "description": str,  # resolved description
+                "tags": List[str],  # combined user + LLM tags
+                "title_missing": bool,  # True if no title was found
+                "llm_suggestions": {"title": str, "description": str, "tags": List[str]},
+                "conflict": Optional[dict],  # conflict info if bookmark exists
+                "display_id": str,
+            }
+        """
+        display_id = Bookmark.generate_display_id(url)
+        existing_bookmark = self.session.query(Bookmark).filter_by(url=url).first()
+
+        # If bookmark exists and user didn't provide any overrides, return early
+        if existing_bookmark and not (title or description or tags):
+            existing_tags = [tag.name for tag in existing_bookmark.tags]
+            return {
+                "url": url,
+                "title": existing_bookmark.title,
+                "description": existing_bookmark.description,
+                "tags": existing_tags,
+                "title_missing": False,
+                "llm_suggestions": {"title": None, "description": None, "tags": []},
+                "conflict": {
+                    "no_changes": True,
+                    "existing": {
+                        "title": existing_bookmark.title,
+                        "description": existing_bookmark.description,
+                        "tags": existing_tags,
+                        "display_id": existing_bookmark.display_id
+                    }
+                },
+                "display_id": existing_bookmark.display_id,
+            }
+
+        # Fetch webpage/video metadata
+        metadata = self.metadata_fetcher.fetch_metadata(url)
+        fetched_title = metadata.get('title', '')
+        fetched_description = metadata.get('description', '')
+        fetched_keywords = metadata.get('keywords', [])
+
+        # Generate LLM suggestions if client available
+        llm_title = None
+        llm_description = None
+        llm_tags = []
+
+        if self.openai_client:
+            llm_input_title = title or fetched_title or ""
+            llm_input_description = description or fetched_description or ""
+
+            llm_tags = self.openai_client.generate_tags(
+                title=llm_input_title,
+                description=llm_input_description,
+                url=url,
+                max_tags=8
+            )
+
+            llm_title = title or fetched_title or self.metadata_fetcher._title_from_url_path(url)
+            llm_description = description or fetched_description
+
+        # Format final title/description
+        final_title = title
+        final_description = description
+        title_missing = False
+
+        if title and llm_title and title != llm_title:
+            final_title = f"{title} ({llm_title})"
+        elif not title and llm_title:
+            final_title = llm_title
+        elif not title and not llm_title:
+            final_title = self.metadata_fetcher._title_from_url_path(url) or None
+            if not final_title:
+                title_missing = True
+
+        if description and llm_description and description != llm_description:
+            final_description = f"{description} ({llm_description})"
+        elif not description and llm_description:
+            final_description = llm_description
+
+        # Combine user tags and LLM tags
+        final_tags = list(tags) if tags else []
+        if llm_tags:
+            final_tags.extend(llm_tags)
+
+        # Build result
+        result = {
+            "url": url,
+            "title": final_title,
+            "description": final_description,
+            "tags": final_tags,
+            "title_missing": title_missing,
+            "llm_suggestions": {
+                "title": llm_title,
+                "description": llm_description,
+                "tags": llm_tags
+            },
+            "conflict": None,
+            "display_id": display_id,
+        }
+
+        # If bookmark exists, include conflict info
+        if existing_bookmark:
+            existing_tags = [tag.name for tag in existing_bookmark.tags]
+            result["conflict"] = {
+                "existing": {
+                    "title": existing_bookmark.title,
+                    "description": existing_bookmark.description,
+                    "tags": existing_tags,
+                    "display_id": existing_bookmark.display_id
+                },
+                "new": {
+                    "title": final_title,
+                    "description": final_description,
+                    "tags": final_tags
+                }
+            }
+
+        return result
+
+    def submit_bookmark(
+        self,
+        url: str,
+        title: str,
+        description: str,
+        tags: List[str],
+        shared: bool = True,
+        outline: Optional[str] = None,
+        groups: Optional[str] = None,
+        conflict_resolution: Optional[str] = None,
+    ) -> Dict:
+        """
+        Submit a prepared bookmark to Diigo and save to database.
+
+        Handles the Diigo API call and local database persistence.
+        Use after prepare_bookmark() to actually create/update the bookmark.
+
+        Args:
+            url: Bookmark URL
+            title: Resolved title to submit
+            description: Resolved description to submit
+            tags: Final list of tags to submit
+            shared: Whether bookmark is public (default: True)
+            outline: Optional Diigo outliner content
+            groups: Optional comma-separated group names
+            conflict_resolution: Optional resolution code for updating existing bookmarks.
+                Used internally to apply resolution logic on existing bookmarks.
+
+        Returns:
+            Dict with submitted bookmark details:
+            {
+                "url": str,
+                "title": str,
+                "description": str,
+                "tags": List[str],
+                "display_id": str,
+            }
+
+        Raises:
+            ValueError: If Diigo API fails to create/update bookmark
+        """
+        display_id = Bookmark.generate_display_id(url)
+        existing_bookmark = self.session.query(Bookmark).filter_by(url=url).first()
+
+        # Call Diigo API to create/update bookmark
+        try:
+            self.diigo_client.create_bookmark(
+                url=url,
+                title=title or "Untitled",
+                description=description or "",
+                tags=tags,
+                shared=shared,
+                merge=False
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to create bookmark in Diigo: {e}")
+
+        # Create or update bookmark in our database
+        if existing_bookmark:
+            from datetime import datetime, timezone
+            bookmark = existing_bookmark
+            bookmark.title = title
+            bookmark.description = description
+            bookmark.shared = shared
+            bookmark.outline = outline
+            bookmark.groups = groups
+            bookmark.updated_at = datetime.now(timezone.utc)
+            bookmark.tags.clear()
+        else:
+            bookmark = Bookmark(
+                display_id=display_id,
+                url=url,
+                title=title,
+                description=description,
+                shared=shared,
+                outline=outline,
+                groups=groups
+            )
+            self.session.add(bookmark)
+
+        # Add tags to bookmark
+        for tag_name in tags:
+            tag_name = tag_name.strip().lower()
+            if not tag_name:
+                continue
+
+            tag = self.session.query(Tag).filter_by(name=tag_name).first()
+            if not tag:
+                tag = Tag(name=tag_name, count=0, source="user")
+                self.session.add(tag)
+                self.session.flush()
+
+            bookmark.tags.append(tag)
+
+        self.session.commit()
+
+        return {
+            "url": url,
+            "title": title,
+            "description": description,
+            "tags": tags,
+            "display_id": display_id
+        }
+
     def add_bookmark(
         self,
         url: str,
@@ -211,6 +456,7 @@ class BookmarkService:
         """
         Add bookmark to Diigo with LLM-powered defaults and conflict resolution.
 
+        Convenience wrapper that calls prepare_bookmark() then submit_bookmark().
         If title/description not provided, uses LLM to generate them.
         If bookmark already exists and no conflict_resolution provided, returns
         conflict info for user to decide.
@@ -256,116 +502,58 @@ class BookmarkService:
         Raises:
             ValueError: If Diigo API fails to create/update bookmark
         """
-        # Check if bookmark already exists FIRST (before expensive LLM calls)
-        display_id = Bookmark.generate_display_id(url)
-        existing_bookmark = self.session.query(Bookmark).filter_by(url=url).first()
+        # Prepare phase: fetch metadata, generate LLM suggestions, check conflicts
+        prepared = self.prepare_bookmark(url, title, description, tags)
 
-        # If bookmark exists and user didn't provide any overrides, no changes needed
-        if existing_bookmark and not (title or description or tags) and not conflict_resolution:
-            existing_tags = [tag.name for tag in existing_bookmark.tags]
+        # If bookmark exists and user didn't provide any overrides, ensure it
+        # exists in Diigo (may have been deleted externally) then return
+        if prepared["conflict"] and prepared["conflict"].get("no_changes"):
+            # Re-submit to Diigo to ensure it exists there too
+            self.submit_bookmark(
+                url=url,
+                title=prepared["title"],
+                description=prepared["description"] or "",
+                tags=prepared["tags"],
+                shared=shared,
+            )
             return {
                 "no_changes": True,
                 "url": url,
-                "title": existing_bookmark.title,
-                "description": existing_bookmark.description,
-                "tags": existing_tags,
-                "display_id": existing_bookmark.display_id
+                "title": prepared["title"],
+                "description": prepared["description"],
+                "tags": prepared["tags"],
+                "display_id": prepared["display_id"]
             }
 
-        # Fetch webpage/video metadata (only if needed)
-        metadata = self.metadata_fetcher.fetch_metadata(url)
-        fetched_title = metadata.get('title', '')
-        fetched_description = metadata.get('description', '')
-        fetched_keywords = metadata.get('keywords', [])
-
-        # Generate LLM suggestions if client available
-        llm_title = None
-        llm_description = None
-        llm_tags = []
-
-        if self.openai_client:
-            # Use fetched metadata if user didn't provide title/description
-            llm_input_title = title or fetched_title or ""
-            llm_input_description = description or fetched_description or ""
-
-            # Generate tags from LLM with full context
-            llm_tags = self.openai_client.generate_tags(
-                title=llm_input_title,
-                description=llm_input_description,
-                url=url,
-                max_tags=8
-            )
-
-            # Use fetched title as fallback if no user title
-            llm_title = title or fetched_title or self.metadata_fetcher._title_from_url_path(url)
-            llm_description = description or fetched_description
-
-        # Format final title/description
-        final_title = title
-        final_description = description
-        title_missing = False
-
-        if title and llm_title and title != llm_title:
-            # User provided, add LLM in parentheses: "User Title (LLM Title)"
-            final_title = f"{title} ({llm_title})"
-        elif not title and llm_title:
-            # No user title, use LLM
-            final_title = llm_title
-        elif not title and not llm_title:
-            # No title from user or LLM; try URL path extraction as last resort
-            final_title = self.metadata_fetcher._title_from_url_path(url) or None
-            if not final_title:
-                title_missing = True
-
-        if description and llm_description and description != llm_description:
-            final_description = f"{description} ({llm_description})"
-        elif not description and llm_description:
-            final_description = llm_description
-
-        # Combine user tags and LLM tags
-        final_tags = list(tags) if tags else []
-        if llm_tags:
-            # TODO: Check similarity between user tags and LLM tags
-            # For now, just combine them
-            final_tags.extend(llm_tags)
-
-        # If bookmark exists and no conflict resolution specified, return conflict info
-        if existing_bookmark and not conflict_resolution:
-            existing_tags = [tag.name for tag in existing_bookmark.tags]
-
-            # Return conflict information for CLI to handle
+        # If conflict exists and no resolution provided, return conflict info for CLI
+        if prepared["conflict"] and not conflict_resolution:
             result = {
                 "conflict": True,
                 "url": url,
-                "existing": {
-                    "title": existing_bookmark.title,
-                    "description": existing_bookmark.description,
-                    "tags": existing_tags,
-                    "display_id": existing_bookmark.display_id
-                },
-                "new": {
-                    "title": final_title,
-                    "description": final_description,
-                    "tags": final_tags
-                },
-                "llm_suggestions": {
-                    "title": llm_title,
-                    "description": llm_description,
-                    "tags": llm_tags
-                }
+                "existing": prepared["conflict"]["existing"],
+                "new": prepared["conflict"]["new"],
+                "llm_suggestions": prepared["llm_suggestions"]
             }
-            if title_missing:
+            if prepared["title_missing"]:
                 result["title_missing"] = True
             return result
 
         # Determine final values based on conflict resolution strategy
-        if existing_bookmark and conflict_resolution:
-            # Parse 3-character resolution code: position 0=title, 1=description, 2=tags
-            # Each char can be: n=new, o=original, s=smart
+        final_title = prepared["title"]
+        final_description = prepared["description"]
+        final_tags = prepared["tags"]
+
+        if prepared["conflict"] and conflict_resolution:
+            existing_data = prepared["conflict"]["existing"]
+            existing_tags = existing_data["tags"]
+            existing_title = existing_data["title"]
+            existing_description = existing_data["description"]
+            existing_display_id = existing_data["display_id"]
+
+            # Parse 3-character resolution code
             if len(conflict_resolution) == 3:
                 title_res, desc_res, tags_res = conflict_resolution[0], conflict_resolution[1], conflict_resolution[2]
             else:
-                # Backward compatibility with old single-word codes
                 if conflict_resolution == 'keep':
                     title_res, desc_res, tags_res = 'o', 'o', 'o'
                 elif conflict_resolution == 'replace':
@@ -375,119 +563,52 @@ class BookmarkService:
                 else:
                     title_res, desc_res, tags_res = 'o', 'o', 'o'
 
-            existing_tags = [tag.name for tag in existing_bookmark.tags]
-
             # Resolve title
             if title_res == 'o':
-                final_title = existing_bookmark.title
-            elif title_res == 'n':
-                final_title = final_title  # Already set
+                final_title = existing_title
             elif title_res == 's':
-                # Smart: prefer user-provided, else keep existing
-                final_title = title or existing_bookmark.title
+                final_title = title or existing_title
 
             # Resolve description
             if desc_res == 'o':
-                final_description = existing_bookmark.description
-            elif desc_res == 'n':
-                final_description = final_description  # Already set
+                final_description = existing_description
             elif desc_res == 's':
-                # Smart: prefer user-provided, else keep existing
-                final_description = description or existing_bookmark.description
+                final_description = description or existing_description
 
             # Resolve tags
             if tags_res == 'o':
                 final_tags = existing_tags
-            elif tags_res == 'n':
-                final_tags = final_tags  # Already set
             elif tags_res == 's':
-                # Smart: combine tags (unique union)
                 final_tags = list(set(existing_tags + final_tags))
 
             # Check if keeping everything original
             if conflict_resolution == 'ooo':
                 return {
                     "url": url,
-                    "title": existing_bookmark.title,
-                    "description": existing_bookmark.description,
+                    "title": existing_title,
+                    "description": existing_description,
                     "tags": existing_tags,
-                    "display_id": existing_bookmark.display_id,
+                    "display_id": existing_display_id,
                     "action": "kept_original"
                 }
 
-        # Call Diigo API to create/update bookmark
-        # Use merge=False to replace existing bookmark data (not merge with it)
-        try:
-            diigo_response = self.diigo_client.create_bookmark(
-                url=url,
-                title=final_title or "Untitled",
-                description=final_description or "",
-                tags=final_tags,
-                shared=shared,
-                merge=False  # Replace existing bookmark, don't merge
-            )
-        except Exception as e:
-            raise ValueError(f"Failed to create bookmark in Diigo: {e}")
+        # Submit phase: call Diigo API and save to DB
+        result = self.submit_bookmark(
+            url=url,
+            title=final_title,
+            description=final_description,
+            tags=final_tags,
+            shared=shared,
+            outline=outline,
+            groups=groups,
+            conflict_resolution=conflict_resolution,
+        )
 
-        # Create or update bookmark in our database
-        if existing_bookmark:
-            # Update existing bookmark
-            from datetime import datetime, timezone
-            bookmark = existing_bookmark
-            bookmark.title = final_title
-            bookmark.description = final_description
-            bookmark.shared = shared
-            bookmark.outline = outline
-            bookmark.groups = groups
-            # Manually set updated_at to track when our tool modified this bookmark
-            bookmark.updated_at = datetime.now(timezone.utc)
-            # Note: Don't change created_at - it should remain fixed from initial creation
-            # Clear existing tags and re-add
-            bookmark.tags.clear()
-        else:
-            # Create new bookmark
-            # created_at will use model default (func.now()) since we're adding "now"
-            bookmark = Bookmark(
-                display_id=display_id,
-                url=url,
-                title=final_title,
-                description=final_description,
-                shared=shared,
-                outline=outline,
-                groups=groups
-            )
-            self.session.add(bookmark)
-
-        # Add tags to bookmark
-        for tag_name in final_tags:
-            tag_name = tag_name.strip().lower()
-            if not tag_name:
-                continue
-
-            tag = self.session.query(Tag).filter_by(name=tag_name).first()
-            if not tag:
-                tag = Tag(name=tag_name, count=0, source="user")
-                self.session.add(tag)
-                self.session.flush()  # Get ID
-
-            bookmark.tags.append(tag)
-
-        self.session.commit()
-
-        result = {
-            "url": url,
-            "title": final_title,
-            "description": final_description,
-            "tags": final_tags,
-            "llm_suggestions": {
-                "title": llm_title,
-                "description": llm_description,
-                "tags": llm_tags
-            },
-            "display_id": display_id
-        }
-        if title_missing:
+        # Add LLM suggestions and title_missing to the result
+        result["llm_suggestions"] = prepared["llm_suggestions"]
+        if prepared["title_missing"]:
             result["title_missing"] = True
+
         return result
 
     def lookup_by_url(self, url: str, include_similar: bool = True) -> Dict:
