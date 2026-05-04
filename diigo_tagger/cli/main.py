@@ -451,99 +451,9 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
 
         # Handle conflict (bookmark exists, args passed with differences)
         if preview.get('conflict'):
-            conflict = preview['conflict']
-            click.echo("\n⚠ Bookmark already exists!")
-            click.echo(f"  Display ID: {conflict['existing']['display_id']}")
+            _display_conflict(preview['conflict'])
+            resolution_code = _prompt_conflict_resolution()
 
-            # Show differences
-            click.echo("\n📋 Current vs New:")
-
-            # Only show title if different
-            if conflict['existing']['title'] != conflict['new']['title']:
-                click.echo(f"\n  Title:")
-                click.echo(f"    Current: {conflict['existing']['title']}")
-                click.echo(f"    New:     {conflict['new']['title']}")
-
-            # Only show description if different
-            existing_desc = conflict['existing']['description']
-            new_desc = conflict['new']['description']
-            if existing_desc != new_desc:
-                click.echo(f"\n  Description:")
-                click.echo(f"    Current: {existing_desc[:80] if existing_desc else '(none)'}...")
-                click.echo(f"    New:     {new_desc[:80] if new_desc else '(none)'}...")
-
-            click.echo(f"\n  Tags:")
-            existing_set = set(conflict['existing']['tags'])
-            new_set = set(conflict['new']['tags'])
-            only_existing = existing_set - new_set
-            only_new = new_set - existing_set
-            common = existing_set & new_set
-
-            if common:
-                click.echo(f"    Common: {', '.join(sorted(common))}")
-            if only_existing:
-                click.echo(f"    Only in current: {', '.join(sorted(only_existing))}")
-            if only_new:
-                click.echo(f"    Only in new: {', '.join(sorted(only_new))}")
-
-            # Prompt for action
-            click.echo("\nHow would you like to proceed?")
-            click.echo("  Quick options:")
-            click.echo("    1. Keep original (ooo)")
-            click.echo("    2. Replace with new (nnn)")
-            click.echo("    3. Smart merge all (sss)")
-            click.echo("    4. Custom (specify per field)")
-            click.echo("    5. Cancel")
-            click.echo("\n  Or enter a 3-character code directly (e.g., 'nns')")
-
-            while True:
-                choice_str = click.prompt("Choose option (1-5) or code", type=str, default="5")
-
-                # Try to parse as integer first
-                try:
-                    choice = int(choice_str)
-                    if choice == 5:
-                        click.echo("Cancelled")
-                        raise click.Abort()
-
-                    # Map quick options to resolution codes
-                    quick_map = {
-                        1: 'ooo',  # keep original
-                        2: 'nnn',  # replace with new
-                        3: 'sss',  # smart merge all
-                    }
-
-                    if choice in quick_map:
-                        resolution_code = quick_map[choice]
-                        break
-                    elif choice == 4:
-                        # Custom: prompt for 3-character code
-                        click.echo("\nEnter 3-character resolution code:")
-                        click.echo("  Position 1 (Title):       n=new, o=original, s=smart")
-                        click.echo("  Position 2 (Description): n=new, o=original, s=smart")
-                        click.echo("  Position 3 (Tags):        n=new, o=original, s=smart")
-                        click.echo("  Example: 'nns' = new title, new description, smart merge tags")
-
-                        while True:
-                            resolution_code = click.prompt("Resolution code", type=str, default="ooo").lower()
-                            if len(resolution_code) == 3 and all(c in 'nos' for c in resolution_code):
-                                break
-                            click.echo("Invalid code. Must be 3 characters from [n, o, s]")
-                        break
-                    else:
-                        click.echo("Invalid option. Please enter 1-5 or a 3-character code.")
-                        continue
-
-                except ValueError:
-                    # Not an integer, try as 3-character code
-                    resolution_code = choice_str.lower()
-                    if len(resolution_code) == 3 and all(c in 'nos' for c in resolution_code):
-                        break
-                    else:
-                        click.echo("Invalid input. Enter 1-5 or a 3-character code (n/o/s).")
-                        continue
-
-            # Call service with resolution code via add_bookmark (handles merge logic)
             result = service.add_bookmark(
                 url=url,
                 title=title,
@@ -555,18 +465,7 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
                 conflict_resolution=resolution_code
             )
 
-            # Display conflict resolution results
-            action = result.get('action', 'added')
-            if action == 'kept_original':
-                click.echo(f"\n✓ Kept original bookmark")
-            else:
-                click.echo(f"\n✓ Bookmark {action} successfully!")
-
-            click.echo(f"  Display ID: {result['display_id']}")
-            click.echo(f"  Title: {result['title']}")
-            if result.get('description'):
-                click.echo(f"  Description: {result['description'][:100]}...")
-            click.echo(f"  Tags: {', '.join(result['tags'])}")
+            _display_result(result)
             return
 
         # New bookmark — show preview and prompt for confirmation
@@ -596,13 +495,7 @@ def add(url: str, title: Optional[str], description: Optional[str], tags: Option
             groups=groups,
         )
 
-    # Display success
-    click.echo(f"\n✓ Bookmark added successfully!")
-    click.echo(f"  Display ID: {result['display_id']}")
-    click.echo(f"  Title: {result['title']}")
-    if result.get('description'):
-        click.echo(f"  Description: {result['description'][:100]}...")
-    click.echo(f"  Tags: {', '.join(result['tags'])}")
+    _display_result(result)
 
 
 def _display_bookmark_preview(url: str, title: Optional[str], description: Optional[str],
@@ -667,6 +560,130 @@ def _prompt_bookmark_confirmation(title: Optional[str], description: Optional[st
 
         else:
             click.echo("Invalid choice. Enter Y, e, or c.")
+
+
+def _display_conflict(conflict: dict):
+    """Display conflict information comparing existing and new bookmark data.
+
+    Args:
+        conflict: Dict with 'existing' and 'new' keys containing bookmark data.
+    """
+    click.echo("\n⚠ Bookmark already exists!")
+    click.echo(f"  Display ID: {conflict['existing']['display_id']}")
+
+    click.echo("\n📋 Current vs New:")
+
+    if conflict['existing']['title'] != conflict['new']['title']:
+        click.echo(f"\n  Title:")
+        click.echo(f"    Current: {conflict['existing']['title']}")
+        click.echo(f"    New:     {conflict['new']['title']}")
+
+    existing_desc = conflict['existing']['description']
+    new_desc = conflict['new']['description']
+    if existing_desc != new_desc:
+        click.echo(f"\n  Description:")
+        click.echo(f"    Current: {existing_desc[:80] if existing_desc else '(none)'}...")
+        click.echo(f"    New:     {new_desc[:80] if new_desc else '(none)'}...")
+
+    click.echo(f"\n  Tags:")
+    existing_set = set(conflict['existing']['tags'])
+    new_set = set(conflict['new']['tags'])
+    only_existing = existing_set - new_set
+    only_new = new_set - existing_set
+    common = existing_set & new_set
+
+    if common:
+        click.echo(f"    Common: {', '.join(sorted(common))}")
+    if only_existing:
+        click.echo(f"    Only in current: {', '.join(sorted(only_existing))}")
+    if only_new:
+        click.echo(f"    Only in new: {', '.join(sorted(only_new))}")
+
+
+def _prompt_conflict_resolution() -> str:
+    """Prompt user to choose a conflict resolution strategy.
+
+    Offers quick options (keep, replace, merge) or a custom 3-character code.
+
+    Returns:
+        3-character resolution code (e.g., 'nns', 'ooo', 'sss').
+
+    Raises:
+        click.Abort: If user chooses to cancel.
+    """
+    click.echo("\nHow would you like to proceed?")
+    click.echo("  Quick options:")
+    click.echo("    1. Keep original (ooo)")
+    click.echo("    2. Replace with new (nnn)")
+    click.echo("    3. Smart merge all (sss)")
+    click.echo("    4. Custom (specify per field)")
+    click.echo("    5. Cancel")
+    click.echo("\n  Or enter a 3-character code directly (e.g., 'nns')")
+
+    quick_map = {1: 'ooo', 2: 'nnn', 3: 'sss'}
+
+    while True:
+        choice_str = click.prompt("Choose option (1-5) or code", type=str, default="5")
+
+        try:
+            choice = int(choice_str)
+            if choice == 5:
+                click.echo("Cancelled")
+                raise click.Abort()
+
+            if choice in quick_map:
+                return quick_map[choice]
+            elif choice == 4:
+                return _prompt_custom_resolution_code()
+            else:
+                click.echo("Invalid option. Please enter 1-5 or a 3-character code.")
+                continue
+
+        except ValueError:
+            resolution_code = choice_str.lower()
+            if len(resolution_code) == 3 and all(c in 'nos' for c in resolution_code):
+                return resolution_code
+            else:
+                click.echo("Invalid input. Enter 1-5 or a 3-character code (n/o/s).")
+                continue
+
+
+def _prompt_custom_resolution_code() -> str:
+    """Prompt user for a custom 3-character resolution code.
+
+    Returns:
+        Validated 3-character code where each char is n, o, or s.
+    """
+    click.echo("\nEnter 3-character resolution code:")
+    click.echo("  Position 1 (Title):       n=new, o=original, s=smart")
+    click.echo("  Position 2 (Description): n=new, o=original, s=smart")
+    click.echo("  Position 3 (Tags):        n=new, o=original, s=smart")
+    click.echo("  Example: 'nns' = new title, new description, smart merge tags")
+
+    while True:
+        resolution_code = click.prompt("Resolution code", type=str, default="ooo").lower()
+        if len(resolution_code) == 3 and all(c in 'nos' for c in resolution_code):
+            return resolution_code
+        click.echo("Invalid code. Must be 3 characters from [n, o, s]")
+
+
+def _display_result(result: dict):
+    """Display the result of a bookmark add or conflict resolution.
+
+    Args:
+        result: Dict with bookmark details from the service layer.
+    """
+    action = result.get('action', 'added')
+    if action == 'kept_original':
+        click.echo(f"\n✓ Kept original bookmark")
+    else:
+        click.echo(f"\n✓ Bookmark {action} successfully!")
+
+    click.echo(f"  Display ID: {result['display_id']}")
+    click.echo(f"  Title: {result['title']}")
+    if result.get('description'):
+        click.echo(f"  Description: {result['description'][:100]}...")
+    click.echo(f"  Tags: {', '.join(result['tags'])}")
 
 
 @cli.command()
