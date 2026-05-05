@@ -23,11 +23,11 @@
     .tag-chip-remove:hover {
         color: #dc2626;
     }
-    .llm-tag-chip {
+    .suggestion-chip {
         display: inline-flex;
         align-items: center;
-        background-color: #d1fae5;
-        color: #065f46;
+        background-color: #f3f4f6;
+        color: #6b7280;
         padding: 0.25rem 0.75rem;
         border-radius: 9999px;
         font-size: 0.875rem;
@@ -35,23 +35,9 @@
         cursor: pointer;
         transition: all 0.2s;
     }
-    .llm-tag-chip:hover {
-        background-color: #a7f3d0;
-    }
-    .detected-tag-chip {
-        display: inline-flex;
-        align-items: center;
-        background-color: #dbeafe;
-        color: #1e40af;
-        padding: 0.25rem 0.75rem;
-        border-radius: 9999px;
-        font-size: 0.875rem;
-        margin: 0.25rem;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-    .detected-tag-chip:hover {
-        background-color: #bfdbfe;
+    .suggestion-chip:hover {
+        background-color: #e5e7eb;
+        color: #374151;
     }
     .similarity-hint {
         font-size: 0.7rem;
@@ -108,10 +94,6 @@
         border-radius: 0.375rem;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         min-width: 150px;
-        display: none;
-    }
-    .candidates-dropdown.show {
-        display: block;
     }
     .candidates-dropdown-item {
         padding: 0.25rem 0.75rem;
@@ -136,36 +118,23 @@
 <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="bg-white shadow sm:rounded-lg">
         <div class="px-4 py-5 sm:p-6">
-            <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">
-                Add New Bookmark
-            </h3>
+            <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">Add New Bookmark</h3>
 
-            <!-- Status Messages -->
             <div id="status-message" class="hidden mb-4 rounded-md p-4"></div>
 
             <!-- Phase 1: URL Entry -->
             <form id="url-form" class="space-y-6">
                 <div>
-                    <label for="url" class="block text-sm font-medium text-gray-700">
-                        URL <span class="text-red-500">*</span>
-                    </label>
-                    <div class="mt-1 flex rounded-md shadow-sm">
-                        <input type="url" name="url" id="url" required
-                               placeholder="https://example.com/article"
-                               class="flex-1 block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
-                    </div>
+                    <label for="url" class="block text-sm font-medium text-gray-700">URL <span class="text-red-500">*</span></label>
+                    <input type="url" name="url" id="url" required placeholder="https://example.com/article"
+                           class="mt-1 flex-1 block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
                     <p class="mt-1 text-sm text-gray-500">Enter URL and click Preview to fetch metadata and generate tags</p>
                 </div>
-
                 <div class="flex items-center justify-end space-x-4">
                     <button type="button" onclick="window.location.href='/'"
-                            class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                        Cancel
-                    </button>
+                            class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</button>
                     <button type="submit" id="preview-btn"
-                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
-                        Preview
-                    </button>
+                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">Preview</button>
                 </div>
             </form>
 
@@ -174,44 +143,45 @@
                 <div class="border-t border-gray-200 pt-4">
                     <h4 class="text-md font-medium text-gray-900 mb-4">Review Bookmark</h4>
 
-                    <!-- Title -->
                     <div class="mb-4">
                         <label for="preview-title" class="block text-sm font-medium text-gray-700">Title</label>
-                        <input type="text" id="preview-title"
-                               class="mt-1 block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
+                        <input type="text" id="preview-title" class="mt-1 block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
                         <p id="title-warning" class="hidden mt-1 text-sm text-yellow-600">No title found - please provide one</p>
                     </div>
 
-                    <!-- Description -->
                     <div class="mb-4">
                         <label for="preview-description" class="block text-sm font-medium text-gray-700">Description</label>
-                        <textarea id="preview-description" rows="3"
-                                  class="mt-1 block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2"></textarea>
+                        <textarea id="preview-description" rows="3" class="mt-1 block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2"></textarea>
                     </div>
 
-                    <!-- Tags -->
+                    <!-- Your tags (manually added) -->
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-gray-700">Tags</label>
                         <div class="mt-1 relative">
                             <input type="text" id="preview-tags-input"
                                    placeholder="Type to search existing tags or press Enter to add new"
-                                   class="block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2"
-                                   autocomplete="off">
+                                   class="block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2" autocomplete="off">
                             <div id="tag-autocomplete-dropdown" class="tag-autocomplete hidden"></div>
                         </div>
-                        <div id="preview-tags-container" class="mt-2 min-h-[2rem]"></div>
+                        <div id="user-tags-container" class="mt-2 min-h-[1rem]"></div>
                     </div>
 
-                    <!-- LLM Suggestions -->
-                    <div id="llm-suggestions" class="hidden mb-4 bg-green-50 border border-green-200 rounded-lg p-4">
-                        <h5 class="text-sm font-medium text-green-900 mb-2">AI-suggested tags (click to add):</h5>
+                    <!-- AI-generated tags (auto-added, removable) -->
+                    <div id="llm-tags-section" class="hidden mb-4 bg-green-50 border border-green-200 rounded-lg p-4">
+                        <h5 class="text-sm font-medium text-green-900 mb-2">AI-generated tags (already added — click × to remove):</h5>
                         <div id="llm-tags-container"></div>
                     </div>
 
-                    <!-- Detected Metadata Tags -->
+                    <!-- Detected metadata tags (auto-added, removable) -->
                     <div id="detected-tags-section" class="hidden mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <h5 class="text-sm font-medium text-blue-900 mb-2">Detected metadata tags (click to add):</h5>
+                        <h5 class="text-sm font-medium text-blue-900 mb-2">Detected metadata tags (already added — click × to remove):</h5>
                         <div id="detected-tags-container"></div>
+                    </div>
+
+                    <!-- Removed suggestions (click to re-add) -->
+                    <div id="removed-suggestions-section" class="hidden mb-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <h5 class="text-sm font-medium text-gray-600 mb-2">Removed suggestions (click + to re-add):</h5>
+                        <div id="removed-suggestions-container"></div>
                     </div>
 
                     <!-- Rating Widget -->
@@ -238,34 +208,21 @@
                         <div id="prefix-tags-inputs"></div>
                     </div>
 
-                    <!-- Shared Toggle -->
                     <div class="flex items-center mb-6">
-                        <input type="checkbox" id="preview-shared" checked
-                               class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
-                        <label for="preview-shared" class="ml-2 block text-sm text-gray-900">
-                            Make this bookmark public (shared)
-                        </label>
+                        <input type="checkbox" id="preview-shared" checked class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                        <label for="preview-shared" class="ml-2 block text-sm text-gray-900">Make this bookmark public (shared)</label>
                     </div>
 
-                    <!-- Action Buttons -->
                     <div class="flex items-center justify-end space-x-4">
-                        <button type="button" id="back-btn"
-                                class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                            Back
-                        </button>
-                        <button type="button" id="confirm-btn"
-                                class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                            Confirm & Submit
-                        </button>
+                        <button type="button" id="back-btn" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Back</button>
+                        <button type="button" id="confirm-btn" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">Confirm & Submit</button>
                     </div>
                 </div>
             </div>
 
             <!-- Conflict Resolution UI -->
             <div id="conflict-ui" class="hidden mt-8 border-t border-gray-200 pt-6">
-                <h4 class="text-md font-medium text-gray-900 mb-4">
-                    Bookmark Already Exists - Choose How to Resolve
-                </h4>
+                <h4 class="text-md font-medium text-gray-900 mb-4">Bookmark Already Exists - Choose How to Resolve</h4>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                     <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                         <h5 class="font-semibold text-yellow-900 mb-2">Current Bookmark</h5>
@@ -286,28 +243,14 @@
                 </div>
                 <div class="space-y-3">
                     <h5 class="font-medium text-gray-900">Choose Resolution Strategy:</h5>
-                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                        <input type="radio" name="resolution" value="ooo" class="mt-1 mr-3">
-                        <div><div class="font-medium">Keep Original</div><div class="text-sm text-gray-600">Keep all existing data</div></div>
-                    </label>
-                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                        <input type="radio" name="resolution" value="nnn" class="mt-1 mr-3">
-                        <div><div class="font-medium">Replace All</div><div class="text-sm text-gray-600">Replace with new data</div></div>
-                    </label>
-                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                        <input type="radio" name="resolution" value="sss" checked class="mt-1 mr-3">
-                        <div><div class="font-medium">Smart Merge (Recommended)</div><div class="text-sm text-gray-600">Keep original if empty, merge tags</div></div>
-                    </label>
-                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                        <input type="radio" name="resolution" value="nns" class="mt-1 mr-3">
-                        <div><div class="font-medium">Update Title & Description, Merge Tags</div><div class="text-sm text-gray-600">Replace title/description, combine tags</div></div>
-                    </label>
+                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50"><input type="radio" name="resolution" value="ooo" class="mt-1 mr-3"><div><div class="font-medium">Keep Original</div><div class="text-sm text-gray-600">Keep all existing data</div></div></label>
+                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50"><input type="radio" name="resolution" value="nnn" class="mt-1 mr-3"><div><div class="font-medium">Replace All</div><div class="text-sm text-gray-600">Replace with new data</div></div></label>
+                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50"><input type="radio" name="resolution" value="sss" checked class="mt-1 mr-3"><div><div class="font-medium">Smart Merge (Recommended)</div><div class="text-sm text-gray-600">Keep original if empty, merge tags</div></div></label>
+                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50"><input type="radio" name="resolution" value="nns" class="mt-1 mr-3"><div><div class="font-medium">Update Title & Description, Merge Tags</div><div class="text-sm text-gray-600">Replace title/description, combine tags</div></div></label>
                 </div>
                 <div class="flex items-center justify-end space-x-4 mt-6">
-                    <button type="button" id="conflict-cancel-btn"
-                            class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</button>
-                    <button type="button" id="conflict-resolve-btn"
-                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">Resolve Conflict</button>
+                    <button type="button" id="conflict-cancel-btn" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</button>
+                    <button type="button" id="conflict-resolve-btn" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">Resolve Conflict</button>
                 </div>
             </div>
         </div>
@@ -315,19 +258,26 @@
 </div>
 
 <script>
-// State
+// === State ===
 let preparedUrl = '';
 let tagCounts = {};
 let tagMatches = [];
-let detectedTags = [];
 let selectedRating = 0;
-let allLlmSuggestions = [];  // full list of LLM suggestions (for returning removed tags)
-let allDetectedSuggestions = [];  // full list of detected tags
-const previewTagsSet = new Set();
-const tagPrefixes = ["reference:"];
 let autocompleteTimeout = null;
 
-// DOM elements
+// Three separate tag sets tracked by origin
+const userTags = new Set();        // manually typed by user
+const llmTags = new Set();         // auto-added from LLM
+const detectedTags = new Set();    // auto-added from MetadataTagDetector
+const removedSuggestions = new Set(); // removed LLM/detected tags (available to re-add)
+
+// Track which tags came from LLM vs detected (for re-add routing)
+let llmTagOrigins = [];    // original LLM suggestion list
+let detectedTagOrigins = []; // original detected tag list
+
+const tagPrefixes = ["reference:"];
+
+// === DOM ===
 const urlForm = document.getElementById('url-form');
 const previewUI = document.getElementById('preview-ui');
 const previewBtn = document.getElementById('preview-btn');
@@ -335,10 +285,9 @@ const confirmBtn = document.getElementById('confirm-btn');
 const backBtn = document.getElementById('back-btn');
 const statusMessage = document.getElementById('status-message');
 const previewTagsInput = document.getElementById('preview-tags-input');
-const previewTagsContainer = document.getElementById('preview-tags-container');
 const autocompleteDropdown = document.getElementById('tag-autocomplete-dropdown');
 
-// Phase 1: Preview
+// === Phase 1: Preview ===
 urlForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const url = document.getElementById('url').value.trim();
@@ -363,7 +312,6 @@ urlForm.addEventListener('submit', async (e) => {
         if (data.conflict && data.conflict.no_changes) {
             showStatus('warning', 'Bookmark Exists', 'This bookmark already exists with no changes.');
         }
-
         if (data.conflict && data.conflict.existing && data.conflict.new) {
             showConflictUI(data);
             return;
@@ -392,24 +340,36 @@ function showPreview(data) {
         document.getElementById('title-warning').classList.add('hidden');
     }
 
-    // Store state
     tagCounts = data.tag_counts || {};
     tagMatches = data.tag_matches || [];
-    detectedTags = data.detected_tags || [];
 
-    // User-provided tags go into main list
-    previewTagsSet.clear();
-    (data.tags || []).forEach(t => previewTagsSet.add(t));
-    renderPreviewTags();
+    // Determine which tags are LLM-generated vs detected vs user-provided
+    const llmSuggestionNames = (data.llm_suggestions && data.llm_suggestions.tags) ? data.llm_suggestions.tags : [];
+    const detectedTagList = data.detected_tags || [];
+    const detectedNames = detectedTagList.map(dt => dt.tag);
 
-    // LLM suggestions — shown as clickable pills, NOT auto-added
-    const llmSuggestions = data.llm_suggestions;
-    allLlmSuggestions = (llmSuggestions && llmSuggestions.tags) ? [...llmSuggestions.tags] : [];
-    renderLlmSuggestions();
+    // Store origins for re-add routing
+    llmTagOrigins = [...llmSuggestionNames];
+    detectedTagOrigins = [...detectedNames];
 
-    // Detected metadata tags — shown as clickable pills
-    allDetectedSuggestions = detectedTags.map(dt => dt.tag);
-    renderDetectedSuggestions();
+    // Clear all sets
+    userTags.clear();
+    llmTags.clear();
+    detectedTags.clear();
+    removedSuggestions.clear();
+
+    // Classify each tag in data.tags by origin
+    (data.tags || []).forEach(t => {
+        if (detectedNames.includes(t)) {
+            detectedTags.add(t);
+        } else if (llmSuggestionNames.includes(t)) {
+            llmTags.add(t);
+        } else {
+            userTags.add(t);
+        }
+    });
+
+    renderAll();
 
     // Rating
     selectedRating = 0;
@@ -419,144 +379,187 @@ function showPreview(data) {
     renderPrefixInputs();
 }
 
-// === Tag rendering ===
+// === Rendering ===
 
-function renderPreviewTags() {
-    previewTagsContainer.innerHTML = '';
-    previewTagsSet.forEach(tag => {
-        const chip = document.createElement('span');
-        chip.className = 'tag-chip';
-        const count = tagCounts[tag] !== undefined ? tagCounts[tag] : '?';
+function renderAll() {
+    renderUserTags();
+    renderLlmTags();
+    renderDetectedTags();
+    renderRemovedSuggestions();
+}
 
-        // Similarity info
-        const match = tagMatches.find(m => m.suggested === tag);
-        let hint = '';
-        if (match && match.action === 'confirm' && match.matched) {
-            const pct = Math.round(match.similarity * 100);
-            if (match.candidates && match.candidates.length > 1) {
-                // Multiple candidates — show dropdown trigger
-                hint = `<span class="candidates-trigger" onclick="event.stopPropagation(); toggleCandidates(this, '${tag.replace(/'/g, "\\'")}')">${pct}% ▾</span>`;
-            } else {
-                hint = `<span class="similarity-hint">~${match.matched} (${pct}%)</span>`;
-            }
+function makeChip(tag, cssClass, extraHtml, onRemoveAction) {
+    const count = tagCounts[tag] !== undefined ? tagCounts[tag] : '?';
+    const match = tagMatches.find(m => (m.suggested === tag || m.matched === tag) && m.candidates && m.candidates.length > 1);
+
+    let candidatesHtml = '';
+    if (match) {
+        const pct = Math.round(match.similarity * 100);
+        candidatesHtml = `<span class="candidates-trigger" onclick="event.stopPropagation(); toggleCandidates(this, '${esc(tag)}')">${pct}% ▾</span>`;
+    } else {
+        const simpleMatch = tagMatches.find(m => m.suggested === tag && m.action === 'confirm' && m.matched);
+        if (simpleMatch) {
+            const pct = Math.round(simpleMatch.similarity * 100);
+            candidatesHtml = `<span class="similarity-hint">~${simpleMatch.matched} (${pct}%)</span>`;
         }
+    }
 
-        chip.innerHTML = `${tag} <span class="text-indigo-400 text-xs">(${count})</span>${hint}<span class="tag-chip-remove" onclick="removePreviewTag('${tag.replace(/'/g, "\\'")}')">&times;</span>`;
-        previewTagsContainer.appendChild(chip);
+    return `<span class="${cssClass}">${tag} <span class="text-xs" style="opacity:0.6">(${count})</span>${candidatesHtml}${extraHtml}</span>`;
+}
+
+function esc(s) { return s.replace(/'/g, "\\'"); }
+
+function renderUserTags() {
+    const container = document.getElementById('user-tags-container');
+    container.innerHTML = '';
+    userTags.forEach(tag => {
+        container.innerHTML += makeChip(tag, 'tag-chip', `<span class="tag-chip-remove" onclick="removeUserTag('${esc(tag)}')">&times;</span>`, null);
     });
 }
 
-function renderLlmSuggestions() {
+function renderLlmTags() {
     const container = document.getElementById('llm-tags-container');
-    const section = document.getElementById('llm-suggestions');
-
-    // Show suggestions not already in main list
-    const unused = allLlmSuggestions.filter(t => !previewTagsSet.has(t));
-    if (unused.length > 0) {
-        section.classList.remove('hidden');
-        container.innerHTML = unused.map(t => {
-            const count = tagCounts[t] !== undefined ? tagCounts[t] : '?';
-            const match = tagMatches.find(m => m.suggested === t);
-            let hint = '';
-            if (match && match.action === 'confirm' && match.matched) {
-                const pct = Math.round(match.similarity * 100);
-                hint = `<span class="similarity-hint">~${match.matched} (${pct}%)</span>`;
-            }
-            return `<span class="llm-tag-chip" onclick="addSuggestionTag('${t.replace(/'/g, "\\'")}')">${t} <span class="text-green-500 text-xs">(${count})</span>${hint} +</span>`;
-        }).join('');
-    } else {
+    const section = document.getElementById('llm-tags-section');
+    if (llmTags.size === 0) {
         section.classList.add('hidden');
+        return;
     }
+    section.classList.remove('hidden');
+    container.innerHTML = '';
+    llmTags.forEach(tag => {
+        container.innerHTML += makeChip(tag, 'tag-chip', `<span class="tag-chip-remove" onclick="removeLlmTag('${esc(tag)}')">&times;</span>`, null);
+    });
 }
 
-function renderDetectedSuggestions() {
+function renderDetectedTags() {
     const container = document.getElementById('detected-tags-container');
     const section = document.getElementById('detected-tags-section');
-
-    const unused = allDetectedSuggestions.filter(t => !previewTagsSet.has(t));
-    if (unused.length > 0) {
-        section.classList.remove('hidden');
-        container.innerHTML = unused.map(t => {
-            const dt = detectedTags.find(d => d.tag === t);
-            const typeLabel = dt ? dt.type : '';
-            return `<span class="detected-tag-chip" onclick="addSuggestionTag('${t.replace(/'/g, "\\'")}')">${t} <span class="text-blue-400 text-xs">(${typeLabel})</span> +</span>`;
-        }).join('');
-    } else {
+    if (detectedTags.size === 0) {
         section.classList.add('hidden');
+        return;
     }
+    section.classList.remove('hidden');
+    container.innerHTML = '';
+    detectedTags.forEach(tag => {
+        container.innerHTML += makeChip(tag, 'tag-chip', `<span class="tag-chip-remove" onclick="removeDetectedTag('${esc(tag)}')">&times;</span>`, null);
+    });
 }
 
-// === Tag add/remove ===
+function renderRemovedSuggestions() {
+    const container = document.getElementById('removed-suggestions-container');
+    const section = document.getElementById('removed-suggestions-section');
+    if (removedSuggestions.size === 0) {
+        section.classList.add('hidden');
+        return;
+    }
+    section.classList.remove('hidden');
+    container.innerHTML = '';
+    removedSuggestions.forEach(tag => {
+        container.innerHTML += `<span class="suggestion-chip" onclick="reAddSuggestion('${esc(tag)}')">${tag} +</span>`;
+    });
+}
 
-function addSuggestionTag(tagName) {
-    tagName = tagName.trim().toLowerCase();
-    if (!tagName || previewTagsSet.has(tagName)) return;
-    previewTagsSet.add(tagName);
-    renderPreviewTags();
-    renderLlmSuggestions();
-    renderDetectedSuggestions();
+// === Add/Remove actions ===
+
+function removeUserTag(tag) {
+    userTags.delete(tag);
+    renderAll();
+}
+
+function removeLlmTag(tag) {
+    llmTags.delete(tag);
+    removedSuggestions.add(tag);
+    renderAll();
+}
+
+function removeDetectedTag(tag) {
+    detectedTags.delete(tag);
+    removedSuggestions.add(tag);
+    renderAll();
+}
+
+function reAddSuggestion(tag) {
+    removedSuggestions.delete(tag);
+    // Route back to correct section
+    if (llmTagOrigins.includes(tag)) {
+        llmTags.add(tag);
+    } else if (detectedTagOrigins.includes(tag)) {
+        detectedTags.add(tag);
+    } else {
+        userTags.add(tag);
+    }
+    renderAll();
 }
 
 function addPreviewTag(tagName) {
     tagName = tagName.trim().toLowerCase();
-    if (!tagName || previewTagsSet.has(tagName)) return;
-    previewTagsSet.add(tagName);
-    renderPreviewTags();
-    renderLlmSuggestions();
-    renderDetectedSuggestions();
-}
-
-function removePreviewTag(tagName) {
-    previewTagsSet.delete(tagName);
-    renderPreviewTags();
-    // Tag returns to suggestions if it was an LLM or detected suggestion
-    renderLlmSuggestions();
-    renderDetectedSuggestions();
+    if (!tagName) return;
+    // Don't add if already in any set
+    if (userTags.has(tagName) || llmTags.has(tagName) || detectedTags.has(tagName)) return;
+    // Remove from removed suggestions if re-adding
+    if (removedSuggestions.has(tagName)) {
+        reAddSuggestion(tagName);
+        return;
+    }
+    userTags.add(tagName);
+    renderAll();
 }
 
 // === Candidates dropdown ===
 
 function toggleCandidates(trigger, tagName) {
-    // Close any open dropdowns
-    document.querySelectorAll('.candidates-dropdown.show').forEach(d => d.classList.remove('show'));
+    // Close other open dropdowns
+    document.querySelectorAll('.candidates-dropdown').forEach(d => {
+        if (d.parentElement !== trigger.parentElement) d.remove();
+    });
 
-    const match = tagMatches.find(m => m.suggested === tagName);
-    if (!match || !match.candidates || match.candidates.length <= 1) return;
-
-    // Create dropdown next to trigger
     let dropdown = trigger.parentElement.querySelector('.candidates-dropdown');
-    if (!dropdown) {
-        dropdown = document.createElement('div');
-        dropdown.className = 'candidates-dropdown';
-        dropdown.innerHTML = match.candidates.map(c => {
-            const pct = Math.round(c.similarity * 100);
-            return `<div class="candidates-dropdown-item" onclick="swapTag('${tagName.replace(/'/g, "\\'")}', '${c.name.replace(/'/g, "\\'")}')">${c.name} (${pct}%)</div>`;
-        }).join('');
-        trigger.parentElement.appendChild(dropdown);
+    if (dropdown) {
+        dropdown.remove();
+        return;
     }
-    dropdown.classList.toggle('show');
+
+    const match = tagMatches.find(m => (m.suggested === tagName || m.matched === tagName) && m.candidates && m.candidates.length > 1);
+    if (!match) return;
+
+    dropdown = document.createElement('div');
+    dropdown.className = 'candidates-dropdown';
+    dropdown.innerHTML = match.candidates.map(c => {
+        const pct = Math.round(c.similarity * 100);
+        return `<div class="candidates-dropdown-item" onclick="swapTag('${esc(tagName)}', '${esc(c.name)}')">${c.name} (${pct}%)</div>`;
+    }).join('');
+    trigger.parentElement.style.position = 'relative';
+    trigger.parentElement.appendChild(dropdown);
 }
 
 function swapTag(oldTag, newTag) {
-    previewTagsSet.delete(oldTag);
-    previewTagsSet.add(newTag.toLowerCase());
-    document.querySelectorAll('.candidates-dropdown.show').forEach(d => d.classList.remove('show'));
-    renderPreviewTags();
-    renderLlmSuggestions();
-    renderDetectedSuggestions();
+    newTag = newTag.toLowerCase();
+    // Swap in whichever set it belongs to
+    if (llmTags.has(oldTag)) {
+        llmTags.delete(oldTag);
+        llmTags.add(newTag);
+    } else if (detectedTags.has(oldTag)) {
+        detectedTags.delete(oldTag);
+        detectedTags.add(newTag);
+    } else if (userTags.has(oldTag)) {
+        userTags.delete(oldTag);
+        userTags.add(newTag);
+    }
+    document.querySelectorAll('.candidates-dropdown').forEach(d => d.remove());
+    renderAll();
 }
 
 // Close dropdowns on outside click
 document.addEventListener('click', (e) => {
     if (!e.target.closest('.candidates-trigger') && !e.target.closest('.candidates-dropdown')) {
-        document.querySelectorAll('.candidates-dropdown.show').forEach(d => d.classList.remove('show'));
+        document.querySelectorAll('.candidates-dropdown').forEach(d => d.remove());
     }
     if (!e.target.closest('#preview-tags-input') && !e.target.closest('#tag-autocomplete-dropdown')) {
         autocompleteDropdown.classList.add('hidden');
     }
 });
 
-// === Tag input: Enter to add + typeahead autocomplete ===
+// === Tag input: Enter + typeahead ===
 
 previewTagsInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
@@ -576,22 +579,18 @@ previewTagsInput.addEventListener('input', () => {
         autocompleteDropdown.classList.add('hidden');
         return;
     }
-
     clearTimeout(autocompleteTimeout);
     autocompleteTimeout = setTimeout(async () => {
         try {
             const resp = await fetch(`/api/v1/tags/autocomplete?prefix=&q=${encodeURIComponent(query)}&limit=10`);
             const data = await resp.json();
-            if (data.tags && data.tags.length > 0) {
-                const filtered = data.tags.filter(t => !previewTagsSet.has(t));
-                if (filtered.length > 0) {
-                    autocompleteDropdown.innerHTML = filtered.map(t =>
-                        `<div class="tag-autocomplete-item" onclick="selectAutocompleteTag('${t.replace(/'/g, "\\'")}')">${t}</div>`
-                    ).join('');
-                    autocompleteDropdown.classList.remove('hidden');
-                } else {
-                    autocompleteDropdown.classList.add('hidden');
-                }
+            const allCurrent = new Set([...userTags, ...llmTags, ...detectedTags]);
+            const filtered = (data.tags || []).filter(t => !allCurrent.has(t));
+            if (filtered.length > 0) {
+                autocompleteDropdown.innerHTML = filtered.map(t =>
+                    `<div class="tag-autocomplete-item" onclick="selectAutocompleteTag('${esc(t)}')">${t}</div>`
+                ).join('');
+                autocompleteDropdown.classList.remove('hidden');
             } else {
                 autocompleteDropdown.classList.add('hidden');
             }
@@ -607,18 +606,17 @@ function selectAutocompleteTag(tagName) {
     autocompleteDropdown.classList.add('hidden');
 }
 
-// === Rating widget ===
+// === Rating ===
 
 document.getElementById('rating-widget').addEventListener('click', (e) => {
     const btn = e.target.closest('.rating-btn');
     if (!btn) return;
-    const rating = parseInt(btn.dataset.rating, 10);
-    selectedRating = rating;
+    selectedRating = parseInt(btn.dataset.rating, 10);
     document.querySelectorAll('#rating-widget .rating-btn').forEach(b => b.classList.remove('active'));
-    if (rating > 0) btn.classList.add('active');
+    if (selectedRating > 0) btn.classList.add('active');
 });
 
-// === Prefix tag inputs ===
+// === Prefix inputs ===
 
 function renderPrefixInputs() {
     const container = document.getElementById('prefix-tags-inputs');
@@ -633,8 +631,7 @@ function renderPrefixInputs() {
     }).join('');
 }
 
-// === Back button ===
-
+// === Back ===
 backBtn.addEventListener('click', () => {
     previewUI.classList.add('hidden');
     urlForm.classList.remove('hidden');
@@ -646,24 +643,19 @@ backBtn.addEventListener('click', () => {
 confirmBtn.addEventListener('click', async () => {
     const title = document.getElementById('preview-title').value.trim();
     const description = document.getElementById('preview-description').value.trim();
-    const tags = Array.from(previewTagsSet);
     const shared = document.getElementById('preview-shared').checked;
 
-    // Add rating tag
-    if (selectedRating > 0) {
-        tags.push(`rating=${selectedRating}_10`);
-    }
+    // Collect all active tags from all three sets
+    const tags = [...userTags, ...llmTags, ...detectedTags];
 
-    // Add prefix tags (split by , and ;)
+    if (selectedRating > 0) tags.push(`rating=${selectedRating}_10`);
+
     document.querySelectorAll('.prefix-tag-input').forEach(input => {
         const rawValue = input.value.trim();
         if (!rawValue) return;
         const prefix = input.dataset.prefix;
-        // Split by , and ; delimiters
-        const values = rawValue.split(/[,;]/).map(v => v.trim()).filter(v => v);
-        values.forEach(v => {
-            const tag = v.startsWith(prefix) ? v : prefix + v;
-            tags.push(tag);
+        rawValue.split(/[,;]/).map(v => v.trim()).filter(v => v).forEach(v => {
+            tags.push(v.startsWith(prefix) ? v : prefix + v);
         });
     });
 
@@ -682,12 +674,11 @@ confirmBtn.addEventListener('click', async () => {
             body: JSON.stringify({ url: preparedUrl, title, description: description || null, tags, shared })
         });
         const data = await response.json();
-
         if (response.ok) {
             showStatus('success', 'Bookmark Added', `Bookmark saved with ID: ${data.display_id}`);
             setTimeout(() => { window.location.href = '/'; }, 2000);
         } else {
-            showStatus('error', 'Error', data.detail?.detail || data.detail || 'Failed to submit bookmark');
+            showStatus('error', 'Error', data.detail?.detail || data.detail || 'Failed to submit');
         }
     } catch (error) {
         showStatus('error', 'Network Error', 'Failed to connect to server');
@@ -705,15 +696,12 @@ function showConflictUI(data) {
     conflictData = data;
     urlForm.classList.add('hidden');
     document.getElementById('conflict-ui').classList.remove('hidden');
-
     document.getElementById('conflict-existing-title').textContent = data.conflict.existing.title || '(no title)';
     document.getElementById('conflict-existing-description').textContent = data.conflict.existing.description || '(no description)';
     document.getElementById('conflict-existing-tags').innerHTML = data.conflict.existing.tags.map(t => `<span class="tag-chip">${t}</span>`).join('');
-
     document.getElementById('conflict-new-title').textContent = data.conflict.new.title || '(no title)';
     document.getElementById('conflict-new-description').textContent = data.conflict.new.description || '(no description)';
     document.getElementById('conflict-new-tags').innerHTML = data.conflict.new.tags.map(t => `<span class="tag-chip">${t}</span>`).join('');
-
     showStatus('warning', 'Conflict Detected', 'This bookmark already exists. Choose how to resolve.');
 }
 
@@ -722,17 +710,11 @@ document.getElementById('conflict-resolve-btn').addEventListener('click', async 
     const resolveBtn = document.getElementById('conflict-resolve-btn');
     resolveBtn.disabled = true;
     resolveBtn.textContent = 'Resolving...';
-
     try {
         const response = await fetch('/api/v1/bookmarks/resolve', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                url: conflictData.url, resolution,
-                title: conflictData.conflict.new.title,
-                description: conflictData.conflict.new.description,
-                tags: conflictData.conflict.new.tags, shared: true
-            })
+            body: JSON.stringify({ url: conflictData.url, resolution, title: conflictData.conflict.new.title, description: conflictData.conflict.new.description, tags: conflictData.conflict.new.tags, shared: true })
         });
         const data = await response.json();
         if (response.ok) {

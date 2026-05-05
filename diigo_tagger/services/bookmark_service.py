@@ -348,10 +348,24 @@ class BookmarkService:
                 # Gracefully handle missing tag data (e.g. empty database)
                 pass
 
-        # Only user-provided tags go into final_tags automatically.
-        # LLM suggestions and detected tags stay as suggestions for the UI
-        # to present — the user decides what to include.
+        # User tags + LLM tags (with reconciliation) + detected tags all auto-added.
+        # UI shows them in labeled sections so user can remove unwanted ones.
         final_tags = list(tags) if tags else []
+        if llm_tags and tag_matches:
+            for match in tag_matches:
+                tag_name = match["matched"] if match["action"] == "auto_accept" and match["matched"] else match["suggested"]
+                if tag_name not in final_tags:
+                    final_tags.append(tag_name)
+        elif llm_tags:
+            for t in llm_tags:
+                if t not in final_tags:
+                    final_tags.append(t)
+
+        # Include detected tag names
+        detected_tag_names = [dt["tag"] for dt in detected_tags]
+        for tag_name in detected_tag_names:
+            if tag_name not in final_tags:
+                final_tags.append(tag_name)
 
         # Look up usage counts for all tags (user + LLM + detected)
         detected_tag_names = [dt["tag"] for dt in detected_tags]

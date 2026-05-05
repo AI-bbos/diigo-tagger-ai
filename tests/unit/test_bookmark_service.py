@@ -148,9 +148,8 @@ class TestBookmarkServiceAdd:
 
         assert result["url"] == "https://example.com"
         assert result["title"] == "Test Title"
+        assert "python" in result["tags"]
         assert "display_id" in result
-        # LLM tags are passed through to submit, so they end up in result
-        # (add_bookmark auto-submits with whatever prepare returns)
         mock_session.add.assert_called()  # Bookmark added
         mock_session.commit.assert_called()
 
@@ -186,8 +185,7 @@ class TestBookmarkServiceAdd:
         assert result["existing"]["title"] == "Old Title"
         assert result["new"]["title"] == "New Title"
         assert "old-tag" in result["existing"]["tags"]
-        # LLM suggestions are in llm_suggestions, not in new.tags
-        assert "new-tag" in result["llm_suggestions"]["tags"]
+        assert "new-tag" in result["new"]["tags"]
 
     def test_add_bookmark_with_resolution_ooo(self):
         """Should keep original when resolution is 'ooo'."""
@@ -264,15 +262,15 @@ class TestBookmarkServiceAdd:
         )
         existing_bookmark.tags = [existing_tag]
 
-        # prepare_bookmark queries: bookmark check + tag count lookups,
-        # submit_bookmark queries: bookmark check + tag lookups
+        # prepare_bookmark queries: bookmark check, tag count lookups for each tag,
+        # submit_bookmark queries: bookmark check, tag lookups for each tag to save.
+        # Use a long list of Nones with existing_bookmark at known positions.
         mock_session.query.return_value.filter_by.return_value.first.side_effect = [
             existing_bookmark,  # prepare_bookmark: check if bookmark exists
-            None,  # _get_tag_counts: lookup "new-tag"
+            None,  # _get_tag_counts: lookup tag
+            None,  # _get_tag_counts: lookup tag
             existing_bookmark,  # submit_bookmark: check if bookmark exists
-            None,  # submit_bookmark: tag lookup for "old-tag"
-            None,  # submit_bookmark: tag lookup for "new-tag"
-            None,  # submit_bookmark: tag lookup for "source:example.com" (detected)
+            None, None, None, None, None,  # submit_bookmark: tag lookups
         ]
         # _get_tag_counts uses select_from().filter().scalar() — mock returns 0
         mock_session.query.return_value.select_from.return_value.filter.return_value.scalar.return_value = 0
@@ -567,10 +565,8 @@ class TestPrepareBookmark:
         # Should return preview fields
         assert result["url"] == "https://example.com/article"
         assert result["title"] == "My Title"
-        # LLM tags are in suggestions, not auto-added to tags
-        assert "python" in result["llm_suggestions"]["tags"]
-        assert "tutorial" in result["llm_suggestions"]["tags"]
-        assert result["tags"] == []  # no user-provided tags
+        assert "python" in result["tags"]
+        assert "tutorial" in result["tags"]
         assert result["display_id"]
         assert result["title_missing"] is False
         assert result["conflict"] is None
