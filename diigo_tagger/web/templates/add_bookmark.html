@@ -44,6 +44,47 @@
     .llm-tag-chip:hover {
         background-color: #a7f3d0;
     }
+    .detected-tag-chip {
+        display: inline-flex;
+        align-items: center;
+        background-color: #dbeafe;
+        color: #1e40af;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.875rem;
+        margin: 0.25rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .detected-tag-chip:hover {
+        background-color: #bfdbfe;
+    }
+    .similarity-hint {
+        font-size: 0.7rem;
+        color: #6b7280;
+        margin-left: 0.25rem;
+    }
+    .rating-btn {
+        width: 2rem;
+        height: 2rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #d1d5db;
+        border-radius: 0.375rem;
+        cursor: pointer;
+        font-size: 0.875rem;
+        transition: all 0.2s;
+    }
+    .rating-btn:hover {
+        background-color: #eef2ff;
+        border-color: #6366f1;
+    }
+    .rating-btn.active {
+        background-color: #4f46e5;
+        color: white;
+        border-color: #4f46e5;
+    }
 </style>
 {% endblock %}
 
@@ -140,6 +181,36 @@
                         <div id="llm-tags-container">
                             <!-- LLM tag chips rendered here -->
                         </div>
+                    </div>
+
+                    <!-- Detected Metadata Tags -->
+                    <div id="detected-tags-section" class="hidden mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <h5 class="text-sm font-medium text-blue-900 mb-2">Detected metadata tags:</h5>
+                        <div id="detected-tags-container"></div>
+                    </div>
+
+                    <!-- Rating Widget -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Rating (optional)</label>
+                        <div class="flex gap-1" id="rating-widget">
+                            <button type="button" class="rating-btn" data-rating="1">1</button>
+                            <button type="button" class="rating-btn" data-rating="2">2</button>
+                            <button type="button" class="rating-btn" data-rating="3">3</button>
+                            <button type="button" class="rating-btn" data-rating="4">4</button>
+                            <button type="button" class="rating-btn" data-rating="5">5</button>
+                            <button type="button" class="rating-btn" data-rating="6">6</button>
+                            <button type="button" class="rating-btn" data-rating="7">7</button>
+                            <button type="button" class="rating-btn" data-rating="8">8</button>
+                            <button type="button" class="rating-btn" data-rating="9">9</button>
+                            <button type="button" class="rating-btn" data-rating="10">10</button>
+                            <button type="button" class="rating-btn ml-2" data-rating="0" style="width:auto;padding:0 0.5rem;">Skip</button>
+                        </div>
+                    </div>
+
+                    <!-- Prefix Tag Inputs -->
+                    <div class="mb-4" id="prefix-tags-section">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Prefix tags</label>
+                        <div id="prefix-tags-inputs"></div>
                     </div>
 
                     <!-- Shared Toggle -->
@@ -274,7 +345,11 @@
 // State
 let preparedUrl = '';
 let tagCounts = {};
+let tagMatches = [];
+let detectedTags = [];
+let selectedRating = 0;
 const previewTagsSet = new Set();
+const tagPrefixes = ["reference:"];
 
 // DOM elements
 const urlForm = document.getElementById('url-form');
@@ -358,6 +433,10 @@ function showPreview(data) {
     (data.tags || []).forEach(t => previewTagsSet.add(t));
     renderPreviewTags();
 
+    // Store tag matches and detected tags
+    tagMatches = data.tag_matches || [];
+    detectedTags = data.detected_tags || [];
+
     // LLM suggestions
     const llmSuggestions = data.llm_suggestions;
     const llmContainer = document.getElementById('llm-suggestions');
@@ -370,7 +449,14 @@ function showPreview(data) {
             llmContainer.classList.remove('hidden');
             llmTagsContainer.innerHTML = unusedTags.map(t => {
                 const count = tagCounts[t] !== undefined ? tagCounts[t] : '?';
-                return `<span class="llm-tag-chip" onclick="addPreviewTagFromLLM('${t.replace(/'/g, "\\'")}')">${t} <span class="text-green-500 text-xs">(${count})</span> +</span>`;
+                // Check for similarity info
+                const match = tagMatches.find(m => m.suggested === t);
+                let similarityHint = '';
+                if (match && match.action === 'confirm' && match.matched) {
+                    const pct = Math.round(match.similarity * 100);
+                    similarityHint = `<span class="similarity-hint">~${match.matched} (${pct}%)</span>`;
+                }
+                return `<span class="llm-tag-chip" onclick="addPreviewTagFromLLM('${t.replace(/'/g, "\\'")}')">${t} <span class="text-green-500 text-xs">(${count})</span>${similarityHint} +</span>`;
             }).join('');
         } else {
             llmContainer.classList.add('hidden');
@@ -378,6 +464,42 @@ function showPreview(data) {
     } else {
         llmContainer.classList.add('hidden');
     }
+
+    // Detected metadata tags
+    const detectedSection = document.getElementById('detected-tags-section');
+    const detectedContainer = document.getElementById('detected-tags-container');
+    if (detectedTags.length > 0) {
+        // Show detected tags that aren't already in the tag list
+        const unusedDetected = detectedTags.filter(dt => !previewTagsSet.has(dt.tag));
+        if (unusedDetected.length > 0) {
+            detectedSection.classList.remove('hidden');
+            detectedContainer.innerHTML = unusedDetected.map(dt =>
+                `<span class="detected-tag-chip" onclick="addDetectedTag('${dt.tag.replace(/'/g, "\\'")}')">${dt.tag} <span class="text-blue-400 text-xs">(${dt.type})</span> +</span>`
+            ).join('');
+        } else {
+            detectedSection.classList.add('hidden');
+        }
+    } else {
+        detectedSection.classList.add('hidden');
+    }
+
+    // Rating widget
+    selectedRating = 0;
+    document.querySelectorAll('#rating-widget .rating-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+
+    // Prefix tag inputs
+    const prefixInputsContainer = document.getElementById('prefix-tags-inputs');
+    prefixInputsContainer.innerHTML = tagPrefixes.map(prefix =>
+        `<div class="flex items-center gap-2 mb-2">
+            <span class="text-sm text-gray-600 w-24">${prefix}</span>
+            <input type="text"
+                   data-prefix="${prefix}"
+                   placeholder="Enter value (e.g. ${prefix}example)"
+                   class="prefix-tag-input flex-1 rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
+        </div>`
+    ).join('');
 }
 
 // Preview tag management
@@ -409,13 +531,35 @@ function removePreviewTag(tagName) {
     renderPreviewTags();
 }
 
+function addDetectedTag(tagName) {
+    addPreviewTag(tagName);
+    // Remove from detected tags display
+    const container = document.getElementById('detected-tags-container');
+    const chips = container.querySelectorAll('.detected-tag-chip');
+    chips.forEach(chip => {
+        if (chip.textContent.includes(tagName)) {
+            chip.remove();
+        }
+    });
+    if (container.children.length === 0) {
+        document.getElementById('detected-tags-section').classList.add('hidden');
+    }
+}
+
 function renderPreviewTags() {
     previewTagsContainer.innerHTML = '';
     previewTagsSet.forEach(tag => {
         const chip = document.createElement('span');
         chip.className = 'tag-chip';
         const count = tagCounts[tag] !== undefined ? tagCounts[tag] : '?';
-        chip.innerHTML = `${tag} <span class="text-indigo-400 text-xs">(${count})</span><span class="tag-chip-remove" onclick="removePreviewTag('${tag.replace(/'/g, "\\'")}')">&times;</span>`;
+        // Check for similarity hint
+        const match = tagMatches.find(m => m.suggested === tag && m.action === 'confirm' && m.matched);
+        let hint = '';
+        if (match) {
+            const pct = Math.round(match.similarity * 100);
+            hint = `<span class="similarity-hint">~${match.matched} (${pct}%)</span>`;
+        }
+        chip.innerHTML = `${tag} <span class="text-indigo-400 text-xs">(${count})</span>${hint}<span class="tag-chip-remove" onclick="removePreviewTag('${tag.replace(/'/g, "\\'")}')">&times;</span>`;
         previewTagsContainer.appendChild(chip);
     });
 }
@@ -425,6 +569,18 @@ previewTagsInput.addEventListener('keydown', (e) => {
         e.preventDefault();
         addPreviewTag(previewTagsInput.value);
         previewTagsInput.value = '';
+    }
+});
+
+// Rating widget handler
+document.getElementById('rating-widget').addEventListener('click', (e) => {
+    const btn = e.target.closest('.rating-btn');
+    if (!btn) return;
+    const rating = parseInt(btn.dataset.rating, 10);
+    selectedRating = rating;
+    document.querySelectorAll('#rating-widget .rating-btn').forEach(b => b.classList.remove('active'));
+    if (rating > 0) {
+        btn.classList.add('active');
     }
 });
 
@@ -441,6 +597,22 @@ confirmBtn.addEventListener('click', async () => {
     const description = document.getElementById('preview-description').value.trim();
     const tags = Array.from(previewTagsSet);
     const shared = document.getElementById('preview-shared').checked;
+
+    // Add rating tag if selected
+    if (selectedRating > 0) {
+        tags.push(`rating=${selectedRating}_10`);
+    }
+
+    // Add prefix tags
+    document.querySelectorAll('.prefix-tag-input').forEach(input => {
+        const value = input.value.trim();
+        if (value) {
+            const prefix = input.dataset.prefix;
+            // If user already typed the prefix, use as-is; otherwise prepend
+            const tag = value.startsWith(prefix) ? value : prefix + value;
+            tags.push(tag);
+        }
+    });
 
     if (!title) {
         showStatus('warning', 'Title Required', 'Please provide a title before submitting.');

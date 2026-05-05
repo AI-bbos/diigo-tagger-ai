@@ -8,7 +8,7 @@ from typing import Optional, Union
 from fastapi import APIRouter, Query, HTTPException
 
 from ...db import get_session
-from ...models import Bookmark as BookmarkModel
+from ...models import Bookmark as BookmarkModel, Tag as TagModel
 from ...services.bookmark_service import BookmarkService
 from ...clients.diigo_client import DiigoClient
 from ...clients.openai_client import OpenAIClient
@@ -288,6 +288,8 @@ async def prepare_bookmark(request: AddBookmarkRequest):
             llm_suggestions=llm_suggestions,
             conflict=result.get("conflict"),
             display_id=result["display_id"],
+            detected_tags=result.get("detected_tags", []),
+            tag_matches=result.get("tag_matches", []),
         )
 
     finally:
@@ -348,6 +350,39 @@ async def submit_bookmark(request: SubmitBookmarkRequest):
             tags=result["tags"],
             display_id=result["display_id"],
         )
+
+    finally:
+        session.close()
+
+
+@router.get("/tags/autocomplete")
+async def tag_autocomplete(
+    prefix: str = Query(..., description="Tag prefix to filter by"),
+    q: str = Query("", description="Optional query to further filter"),
+    limit: int = Query(20, ge=1, le=100, description="Max results"),
+):
+    """Return tags matching a prefix for autocomplete.
+
+    Args:
+        prefix: Required tag prefix (e.g. "reference:").
+        q: Optional additional fragment to filter within the prefix.
+        limit: Maximum number of results to return (1–100, default 20).
+
+    Returns:
+        A dict with ``tags`` (list of matching tag names) and ``prefix``
+        (the prefix used for the query).
+    """
+    session = get_session()
+
+    try:
+        pattern = f"{prefix}{q}%"
+        tags = (
+            session.query(TagModel)
+            .filter(TagModel.name.like(pattern))
+            .limit(limit)
+            .all()
+        )
+        return {"tags": [tag.name for tag in tags], "prefix": prefix}
 
     finally:
         session.close()

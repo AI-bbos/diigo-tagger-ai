@@ -12,6 +12,8 @@ from ..clients.diigo_client import DiigoClient
 from ..clients.openai_client import OpenAIClient
 from ..clients.metadata_fetcher import MetadataFetcher
 from .query_parser import LuceneQueryParser
+from .metadata_tag_detector import MetadataTagDetector
+from .tag_reconciliation import TagReconciliationService
 
 
 class BookmarkService:
@@ -284,6 +286,8 @@ class BookmarkService:
                     }
                 },
                 "display_id": existing_bookmark.display_id,
+                "detected_tags": [],
+                "tag_matches": [],
             }
 
         # Fetch webpage/video metadata
@@ -330,13 +334,41 @@ class BookmarkService:
         elif not description and llm_description:
             final_description = llm_description
 
-        # Combine user tags and LLM tags
-        final_tags = list(tags) if tags else []
+        # Run MetadataTagDetector
+        detector = MetadataTagDetector()
+        detected_tags = detector.detect(url, metadata)
+
+        # Run tag similarity matching on LLM-generated tags
+        tag_matches = []
         if llm_tags:
+            try:
+                reconciler = TagReconciliationService(self.session)
+                tag_matches = reconciler.match_existing_tags(llm_tags)
+            except (TypeError, AttributeError):
+                # Gracefully handle missing tag data (e.g. empty database)
+                pass
+
+        # Combine user tags and LLM tags (applying reconciliation)
+        final_tags = list(tags) if tags else []
+        if llm_tags and tag_matches:
+            for match in tag_matches:
+                if match["action"] == "auto_accept" and match["matched"]:
+                    final_tags.append(match["matched"])
+                else:
+                    final_tags.append(match["suggested"])
+        elif llm_tags:
             final_tags.extend(llm_tags)
 
-        # Look up usage counts for all tags (final + LLM suggestions)
-        all_tag_names = list(set(final_tags + llm_tags))
+        # Include detected tag names in final tags
+        detected_tag_names = [dt["tag"] for dt in detected_tags]
+        for tag_name in detected_tag_names:
+            if tag_name not in final_tags:
+                final_tags.append(tag_name)
+
+        # Look up usage counts for user + LLM tags (skip detected prefix tags)
+        all_tag_names = list(set(
+            [t for t in final_tags if t not in detected_tag_names] + llm_tags
+        ))
         tag_counts = self._get_tag_counts(all_tag_names)
 
         # Build result
@@ -354,6 +386,8 @@ class BookmarkService:
             },
             "conflict": None,
             "display_id": display_id,
+            "detected_tags": detected_tags,
+            "tag_matches": tag_matches,
         }
 
         # If bookmark exists, include conflict info

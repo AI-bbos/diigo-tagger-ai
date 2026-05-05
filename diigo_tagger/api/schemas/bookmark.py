@@ -99,6 +99,8 @@ class PrepareBookmarkResponse(BaseModel):
     llm_suggestions: Optional[LLMSuggestions] = None
     conflict: Optional[dict] = None
     display_id: str
+    detected_tags: List[dict] = Field(default_factory=list, description="Metadata-detected tags [{tag, type}]")
+    tag_matches: List[dict] = Field(default_factory=list, description="Tag similarity matches [{suggested, matched, similarity, candidates, action}]")
 
 
 class SubmitBookmarkRequest(BaseModel):
