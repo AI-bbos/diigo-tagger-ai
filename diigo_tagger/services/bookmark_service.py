@@ -348,27 +348,14 @@ class BookmarkService:
                 # Gracefully handle missing tag data (e.g. empty database)
                 pass
 
-        # Combine user tags and LLM tags (applying reconciliation)
+        # Only user-provided tags go into final_tags automatically.
+        # LLM suggestions and detected tags stay as suggestions for the UI
+        # to present — the user decides what to include.
         final_tags = list(tags) if tags else []
-        if llm_tags and tag_matches:
-            for match in tag_matches:
-                if match["action"] == "auto_accept" and match["matched"]:
-                    final_tags.append(match["matched"])
-                else:
-                    final_tags.append(match["suggested"])
-        elif llm_tags:
-            final_tags.extend(llm_tags)
 
-        # Include detected tag names in final tags
+        # Look up usage counts for all tags (user + LLM + detected)
         detected_tag_names = [dt["tag"] for dt in detected_tags]
-        for tag_name in detected_tag_names:
-            if tag_name not in final_tags:
-                final_tags.append(tag_name)
-
-        # Look up usage counts for user + LLM tags (skip detected prefix tags)
-        all_tag_names = list(set(
-            [t for t in final_tags if t not in detected_tag_names] + llm_tags
-        ))
+        all_tag_names = list(set(final_tags + llm_tags + detected_tag_names))
         tag_counts = self._get_tag_counts(all_tag_names)
 
         # Build result

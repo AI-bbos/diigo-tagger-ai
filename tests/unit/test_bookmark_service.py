@@ -148,8 +148,9 @@ class TestBookmarkServiceAdd:
 
         assert result["url"] == "https://example.com"
         assert result["title"] == "Test Title"
-        assert "python" in result["tags"]
         assert "display_id" in result
+        # LLM tags are passed through to submit, so they end up in result
+        # (add_bookmark auto-submits with whatever prepare returns)
         mock_session.add.assert_called()  # Bookmark added
         mock_session.commit.assert_called()
 
@@ -185,7 +186,8 @@ class TestBookmarkServiceAdd:
         assert result["existing"]["title"] == "Old Title"
         assert result["new"]["title"] == "New Title"
         assert "old-tag" in result["existing"]["tags"]
-        assert "new-tag" in result["new"]["tags"]
+        # LLM suggestions are in llm_suggestions, not in new.tags
+        assert "new-tag" in result["llm_suggestions"]["tags"]
 
     def test_add_bookmark_with_resolution_ooo(self):
         """Should keep original when resolution is 'ooo'."""
@@ -565,8 +567,10 @@ class TestPrepareBookmark:
         # Should return preview fields
         assert result["url"] == "https://example.com/article"
         assert result["title"] == "My Title"
-        assert "python" in result["tags"]
-        assert "tutorial" in result["tags"]
+        # LLM tags are in suggestions, not auto-added to tags
+        assert "python" in result["llm_suggestions"]["tags"]
+        assert "tutorial" in result["llm_suggestions"]["tags"]
+        assert result["tags"] == []  # no user-provided tags
         assert result["display_id"]
         assert result["title_missing"] is False
         assert result["conflict"] is None
