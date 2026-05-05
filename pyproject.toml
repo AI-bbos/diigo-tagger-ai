@@ -49,6 +49,8 @@ python-multipart = "^0.0.6"
 luqum = "^0.13"
 # Rate limiting (security)
 slowapi = "^0.1.9"
+# Interactive CLI prompts
+prompt-toolkit = "^3.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4"
