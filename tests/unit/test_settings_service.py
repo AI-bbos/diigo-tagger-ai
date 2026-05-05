@@ -66,9 +66,9 @@ class TestSettingsServiceTagPrefixes:
     """Tests for tag-prefix helpers."""
 
     def test_get_tag_prefixes_returns_default_when_not_configured(self, session):
-        """Should return ['reference:'] when no prefixes have been stored."""
+        """Should return default prefixes when none have been stored."""
         service = SettingsService(session)
-        assert service.get_tag_prefixes() == ["reference:"]
+        assert service.get_tag_prefixes() == ["author:", "reference:"]
 
     def test_set_and_get_tag_prefixes_round_trip(self, session):
         """Should persist custom prefixes and return them unchanged."""

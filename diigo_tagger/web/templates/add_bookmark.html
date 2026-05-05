@@ -275,7 +275,7 @@ const removedSuggestions = new Set(); // removed LLM/detected tags (available to
 let llmTagOrigins = [];    // original LLM suggestion list
 let detectedTagOrigins = []; // original detected tag list
 
-const tagPrefixes = ["reference:"];
+const tagPrefixes = ["author:", "reference:"];
 
 // === DOM ===
 const urlForm = document.getElementById('url-form');
@@ -653,7 +653,7 @@ function renderPrefixInputs() {
         return `<div class="flex items-center gap-2 mb-2">
             <span class="text-sm font-medium text-gray-700 w-24">${prefix}</span>
             <input type="text" data-prefix="${prefix}"
-                   placeholder="e.g. ${label === 'reference' ? 'peter-zeihan' : 'value'} (use , or ; for multiple)"
+                   placeholder="e.g. ${label === 'reference' ? 'peter-zeihan' : label === 'author' ? 'jane-smith' : 'value'} (use , or ; for multiple)"
                    class="prefix-tag-input flex-1 rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
         </div>`;
     }).join('');
