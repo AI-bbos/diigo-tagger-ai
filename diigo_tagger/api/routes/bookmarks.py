@@ -288,6 +288,8 @@ async def prepare_bookmark(request: AddBookmarkRequest):
             llm_suggestions=llm_suggestions,
             conflict=result.get("conflict"),
             display_id=result["display_id"],
+            detected_tags=result.get("detected_tags", []),
+            tag_matches=result.get("tag_matches", []),
         )
 
     finally:

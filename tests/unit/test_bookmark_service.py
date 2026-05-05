@@ -270,6 +270,7 @@ class TestBookmarkServiceAdd:
             existing_bookmark,  # submit_bookmark: check if bookmark exists
             None,  # submit_bookmark: tag lookup for "old-tag"
             None,  # submit_bookmark: tag lookup for "new-tag"
+            None,  # submit_bookmark: tag lookup for "source:example.com" (detected)
         ]
         # _get_tag_counts uses select_from().filter().scalar() — mock returns 0
         mock_session.query.return_value.select_from.return_value.filter.return_value.scalar.return_value = 0
