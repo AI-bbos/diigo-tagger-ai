@@ -266,6 +266,10 @@ class BookmarkService:
         display_id = Bookmark.generate_display_id(url)
         existing_bookmark = self.session.query(Bookmark).filter_by(url=url).first()
 
+        # Fetch webpage/video metadata (always, even for existing bookmarks —
+        # needed for author extraction and detected tags)
+        metadata = self.metadata_fetcher.fetch_metadata(url)
+
         # If bookmark exists and user didn't provide any overrides, return early
         if existing_bookmark and not (title or description or tags):
             existing_tags = [tag.name for tag in existing_bookmark.tags]
@@ -288,10 +292,10 @@ class BookmarkService:
                 "display_id": existing_bookmark.display_id,
                 "detected_tags": [],
                 "tag_matches": [],
+                "author": metadata.get("author", ""),
             }
 
-        # Fetch webpage/video metadata
-        metadata = self.metadata_fetcher.fetch_metadata(url)
+        # Use already-fetched metadata
         fetched_title = metadata.get('title', '')
         fetched_description = metadata.get('description', '')
         fetched_keywords = metadata.get('keywords', [])

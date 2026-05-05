@@ -156,6 +156,36 @@ class MetadataFetcher:
                 "error": str(e)
             }
 
+    @staticmethod
+    def _author_from_url_path(url: str) -> str:
+        """Extract author/publication from the first URL path segment.
+
+        Useful as a fallback when metadata fetch fails (e.g., Medium 403).
+        Handles Medium-style URLs: medium.com/@user/..., medium.com/publication/...
+
+        Args:
+            url: Full URL to extract author from.
+
+        Returns:
+            Cleaned author string, or empty string if no meaningful segment.
+        """
+        parsed = urlparse(url)
+        path = parsed.path.strip("/")
+        if not path:
+            return ""
+
+        # First path segment is typically the author/publication
+        segment = path.split("/")[0]
+        if not segment:
+            return ""
+
+        # Strip @ prefix (Medium user URLs)
+        segment = segment.lstrip("@")
+
+        # Replace hyphens/underscores with spaces, capitalize
+        words = segment.replace("-", " ").replace("_", " ").split()
+        return " ".join(w.capitalize() for w in words)
+
     def _title_from_url_path(self, url: str) -> str:
         """Extract a human-readable title from the URL path slug.
 
@@ -308,6 +338,10 @@ class MetadataFetcher:
                 except Exception:
                     pass
 
+            # Last resort: extract from URL path
+            if not author:
+                author = self._author_from_url_path(url)
+
             return {
                 "title": title,
                 "description": description,
@@ -325,6 +359,6 @@ class MetadataFetcher:
                 "keywords": [],
                 "content_type": "webpage",
                 "has_article_tag": False,
-                "author": "",
+                "author": self._author_from_url_path(url),
                 "error": str(e)
             }
