@@ -393,18 +393,13 @@ function renderAll() {
 
 function makeChip(tag, cssClass, extraHtml, onRemoveAction) {
     const count = tagCounts[tag] !== undefined ? tagCounts[tag] : '?';
-    const match = tagMatches.find(m => (m.suggested === tag || m.matched === tag) && m.candidates && m.candidates.length > 1);
+    // Any tag with candidates (even just 1) gets a dropdown trigger
+    const match = tagMatches.find(m => (m.suggested === tag || m.matched === tag) && m.candidates && m.candidates.length >= 1);
 
     let candidatesHtml = '';
     if (match) {
         const pct = Math.round(match.similarity * 100);
         candidatesHtml = `<span class="candidates-trigger" onclick="event.stopPropagation(); toggleCandidates(this, '${esc(tag)}')">${pct}% ▾</span>`;
-    } else {
-        const simpleMatch = tagMatches.find(m => m.suggested === tag && m.action === 'confirm' && m.matched);
-        if (simpleMatch) {
-            const pct = Math.round(simpleMatch.similarity * 100);
-            candidatesHtml = `<span class="similarity-hint">~${simpleMatch.matched} (${pct}%)</span>`;
-        }
     }
 
     return `<span class="${cssClass}">${tag} <span class="text-xs" style="opacity:0.6">(${count})</span>${candidatesHtml}${extraHtml}</span>`;
@@ -522,14 +517,26 @@ function toggleCandidates(trigger, tagName) {
         return;
     }
 
-    const match = tagMatches.find(m => (m.suggested === tagName || m.matched === tagName) && m.candidates && m.candidates.length > 1);
+    const match = tagMatches.find(m => (m.suggested === tagName || m.matched === tagName) && m.candidates && m.candidates.length >= 1);
     if (!match) return;
+
+    // Build full options list: candidates + current tag, sorted by similarity desc
+    const currentCount = tagCounts[tagName] !== undefined ? tagCounts[tagName] : 0;
+    let options = match.candidates.map(c => ({name: c.name, similarity: c.similarity}));
+    // Add current tag if not already in list
+    if (!options.some(o => o.name === tagName)) {
+        options.push({name: tagName, similarity: match.similarity || 1.0});
+    }
+    options.sort((a, b) => b.similarity - a.similarity);
 
     dropdown = document.createElement('div');
     dropdown.className = 'candidates-dropdown';
-    dropdown.innerHTML = match.candidates.map(c => {
+    dropdown.innerHTML = options.map(c => {
         const pct = Math.round(c.similarity * 100);
-        return `<div class="candidates-dropdown-item" onclick="swapTag('${esc(tagName)}', '${esc(c.name)}')">${c.name} (${pct}%)</div>`;
+        const count = tagCounts[c.name] !== undefined ? tagCounts[c.name] : 0;
+        const isCurrent = c.name === tagName;
+        const style = isCurrent ? ' style="font-weight:600; background:#eef2ff;"' : '';
+        return `<div class="candidates-dropdown-item"${style} onclick="swapTag('${esc(tagName)}', '${esc(c.name)}')">${c.name} (${count}) ${pct}%</div>`;
     }).join('');
     trigger.parentElement.style.position = 'relative';
     trigger.parentElement.appendChild(dropdown);
