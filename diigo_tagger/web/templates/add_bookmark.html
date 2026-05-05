@@ -359,10 +359,13 @@ function showPreview(data) {
     removedSuggestions.clear();
 
     // Classify each tag in data.tags by origin
+    // Auto-accepted matches have a different name than the original suggestion,
+    // so also check tagMatches for tags that were matched from LLM suggestions
+    const llmMatchedNames = new Set(tagMatches.filter(m => m.matched).map(m => m.matched));
     (data.tags || []).forEach(t => {
         if (detectedNames.includes(t)) {
             detectedTags.add(t);
-        } else if (llmSuggestionNames.includes(t)) {
+        } else if (llmSuggestionNames.includes(t) || llmMatchedNames.has(t)) {
             llmTags.add(t);
         } else {
             userTags.add(t);
@@ -532,18 +535,36 @@ function toggleCandidates(trigger, tagName) {
     trigger.parentElement.appendChild(dropdown);
 }
 
+function replaceInSet(set, oldVal, newVal) {
+    // Replace a value in a Set maintaining iteration order
+    if (!set.has(oldVal)) return false;
+    const arr = [...set];
+    arr[arr.indexOf(oldVal)] = newVal;
+    set.clear();
+    arr.forEach(v => set.add(v));
+    return true;
+}
+
 function swapTag(oldTag, newTag) {
     newTag = newTag.toLowerCase();
-    // Swap in whichever set it belongs to
-    if (llmTags.has(oldTag)) {
-        llmTags.delete(oldTag);
-        llmTags.add(newTag);
-    } else if (detectedTags.has(oldTag)) {
-        detectedTags.delete(oldTag);
-        detectedTags.add(newTag);
-    } else if (userTags.has(oldTag)) {
-        userTags.delete(oldTag);
-        userTags.add(newTag);
+    // Replace in-place to maintain tag order
+    replaceInSet(llmTags, oldTag, newTag) ||
+    replaceInSet(detectedTags, oldTag, newTag) ||
+    replaceInSet(userTags, oldTag, newTag);
+
+    // Update tagMatches so the new tag inherits the candidates dropdown.
+    // Add the old tag to candidates so user can revert.
+    const matchIdx = tagMatches.findIndex(m => m.suggested === oldTag || m.matched === oldTag);
+    if (matchIdx >= 0) {
+        const match = {...tagMatches[matchIdx]};
+        const oldSuggested = match.suggested;
+        match.suggested = newTag;
+        match.matched = newTag;
+        // Ensure old tag is available as a candidate for reverting
+        if (match.candidates && !match.candidates.some(c => c.name === oldSuggested)) {
+            match.candidates = [{name: oldSuggested, similarity: match.similarity}, ...match.candidates];
+        }
+        tagMatches[matchIdx] = match;
     }
     document.querySelectorAll('.candidates-dropdown').forEach(d => d.remove());
     renderAll();
