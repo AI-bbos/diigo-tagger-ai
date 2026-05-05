@@ -310,7 +310,7 @@ urlForm.addEventListener('submit', async (e) => {
         }
 
         if (data.conflict && data.conflict.no_changes) {
-            showStatus('warning', 'Bookmark Exists', 'This bookmark already exists with no changes.');
+            showStatus('warning', 'Bookmark Exists', 'This bookmark is in the Diigo Tagger database but may not be in Diigo. Click Confirm & Submit to ensure it is saved to Diigo.');
         }
         if (data.conflict && data.conflict.existing && data.conflict.new) {
             showConflictUI(data);
@@ -373,6 +373,14 @@ function showPreview(data) {
     });
 
     renderAll();
+
+    // Auto-populate author prefix field if metadata has author
+    if (data.author) {
+        // Store for use after prefix inputs render
+        window._detectedAuthor = data.author;
+    } else {
+        window._detectedAuthor = '';
+    }
 
     // Rating
     selectedRating = 0;
@@ -650,9 +658,12 @@ function renderPrefixInputs() {
     const container = document.getElementById('prefix-tags-inputs');
     container.innerHTML = tagPrefixes.map(prefix => {
         const label = prefix.replace(/:$/, '');
+        // Auto-fill author from metadata if available
+        const prefillValue = (label === 'author' && window._detectedAuthor) ? window._detectedAuthor : '';
         return `<div class="flex items-center gap-2 mb-2">
             <span class="text-sm font-medium text-gray-700 w-24">${prefix}</span>
             <input type="text" data-prefix="${prefix}"
+                   value="${prefillValue}"
                    placeholder="e.g. ${label === 'reference' ? 'peter-zeihan' : label === 'author' ? 'jane-smith' : 'value'} (use , or ; for multiple)"
                    class="prefix-tag-input flex-1 rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
         </div>`;

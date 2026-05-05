@@ -389,6 +389,7 @@ class BookmarkService:
             "display_id": display_id,
             "detected_tags": detected_tags,
             "tag_matches": tag_matches,
+            "author": metadata.get("author", ""),
         }
 
         # If bookmark exists, include conflict info

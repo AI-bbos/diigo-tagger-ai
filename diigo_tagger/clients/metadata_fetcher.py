@@ -210,6 +210,7 @@ class MetadataFetcher:
                 "keywords": [],
                 "content_type": "webpage",
                 "has_article_tag": False,
+                "author": "",
                 "error": "requests or beautifulsoup4 not installed"
             }
 
@@ -281,12 +282,39 @@ class MetadataFetcher:
             # Detect <article> element for format:article tagging
             has_article_tag = soup.find('article') is not None
 
+            # Extract author from meta tags
+            author = ""
+            # Try og:article:author, then author meta, then dc.creator
+            for attr in [
+                {'property': 'article:author'},
+                {'property': 'og:article:author'},
+                {'name': 'author'},
+                {'name': 'dc.creator'},
+            ]:
+                meta_author = soup.find('meta', attrs=attr)
+                if meta_author and meta_author.get('content'):
+                    author = meta_author['content'].strip()
+                    break
+            # Fallback: check for <a rel="author"> or class="author"
+            if not author:
+                author_link = soup.find('a', attrs={'rel': 'author'})
+                if author_link and author_link.get_text(strip=True):
+                    author = author_link.get_text(strip=True)
+            if not author:
+                try:
+                    author_el = soup.select_one('[class*="author"]')
+                    if author_el and author_el.get_text(strip=True):
+                        author = author_el.get_text(strip=True)
+                except Exception:
+                    pass
+
             return {
                 "title": title,
                 "description": description,
                 "keywords": [k for k in keywords if k],  # Filter empty
                 "content_type": "webpage",
-                "has_article_tag": has_article_tag
+                "has_article_tag": has_article_tag,
+                "author": author,
             }
 
         except Exception as e:
@@ -297,5 +325,6 @@ class MetadataFetcher:
                 "keywords": [],
                 "content_type": "webpage",
                 "has_article_tag": False,
+                "author": "",
                 "error": str(e)
             }
