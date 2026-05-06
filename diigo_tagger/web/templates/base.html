@@ -27,11 +27,63 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #555;
         }
+
+        /* Watermark bookmark icons background */
+        .watermark-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+            overflow: hidden;
+        }
+        .watermark-icon {
+            position: absolute;
+            opacity: 0.03;
+            color: #6366f1;
+        }
+        body > *:not(.watermark-bg) {
+            position: relative;
+            z-index: 1;
+        }
     </style>
 
     {% block extra_head %}{% endblock %}
 </head>
 <body class="bg-gray-50 min-h-screen">
+    <!-- Watermark background -->
+    <div class="watermark-bg" id="watermark-bg"></div>
+    <script>
+    (function() {
+        const container = document.getElementById('watermark-bg');
+        const icons = [
+            // Bookmark
+            '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>',
+            // Tag
+            '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 7a1 1 0 011-1h1a1 1 0 110 2H8a1 1 0 01-1-1zm14.707 4.293l-9-9A1 1 0 0012 2H4a2 2 0 00-2 2v8a1 1 0 00.293.707l9 9a1 1 0 001.414 0l9-9a1 1 0 000-1.414z"/></svg>',
+            // Star
+            '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>',
+            // Link
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>',
+        ];
+        const count = 30;
+        for (let i = 0; i < count; i++) {
+            const icon = document.createElement('div');
+            icon.className = 'watermark-icon';
+            icon.innerHTML = icons[Math.floor(Math.random() * icons.length)];
+            const size = 20 + Math.random() * 40;
+            icon.style.width = size + 'px';
+            icon.style.height = size + 'px';
+            icon.style.top = (Math.random() * 100) + '%';
+            icon.style.left = (Math.random() * 100) + '%';
+            icon.style.transform = 'rotate(' + (Math.random() * 360) + 'deg)';
+            container.appendChild(icon);
+        }
+    })();
+    </script>
+
     <!-- Navigation -->
     <nav class="bg-white shadow-sm border-b border-gray-200">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
