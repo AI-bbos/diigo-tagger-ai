@@ -103,6 +103,7 @@ class PrepareBookmarkResponse(BaseModel):
     tag_matches: List[dict] = Field(default_factory=list, description="Tag similarity matches [{suggested, matched, similarity, candidates, action}]")
     author: str = Field("", description="Author extracted from page metadata")
     related_bookmarks: List[dict] = Field(default_factory=list, description="Existing bookmarks with matching URL path")
+    parent_categories: List[dict] = Field(default_factory=list, description="Suggested parent category tags [{tag, original_suggestion, cluster, matched_existing, similarity, is_new}]")
 
 
 class SubmitBookmarkRequest(BaseModel):

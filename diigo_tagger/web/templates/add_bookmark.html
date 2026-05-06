@@ -184,6 +184,12 @@
                         <div id="related-bookmarks-container"></div>
                     </div>
 
+                    <!-- Suggested parent categories (click + to add) -->
+                    <div id="parent-categories-section" class="hidden mb-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                        <h5 class="text-sm font-medium text-amber-900 mb-2">Suggested categories (click + to add):</h5>
+                        <div id="parent-categories-container"></div>
+                    </div>
+
                     <!-- Removed suggestions (click to re-add) -->
                     <div id="removed-suggestions-section" class="hidden mb-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
                         <h5 class="text-sm font-medium text-gray-600 mb-2">Removed suggestions (click + to re-add):</h5>
@@ -378,6 +384,9 @@ function showPreview(data) {
         }
     });
 
+    // Render parent categories
+    renderParentCategories(data.parent_categories || []);
+
     renderAll();
 
     // Auto-populate author prefix field if metadata has author
@@ -496,6 +505,91 @@ function renderRemovedSuggestions() {
     removedSuggestions.forEach(tag => {
         container.innerHTML += `<span class="suggestion-chip" onclick="reAddSuggestion('${esc(tag)}')">${tag} +</span>`;
     });
+}
+
+let parentCategoryData = [];  // store for dropdown reuse
+
+function renderParentCategories(categories) {
+    const container = document.getElementById('parent-categories-container');
+    const section = document.getElementById('parent-categories-section');
+    if (!categories || categories.length === 0) {
+        section.classList.add('hidden');
+        return;
+    }
+    parentCategoryData = categories;
+    section.classList.remove('hidden');
+    container.innerHTML = '';
+    categories.forEach((cat, idx) => {
+        const tagName = cat.tag;
+        const cluster = cat.cluster || [];
+        const candidates = cat.candidates || [];
+        const isNew = cat.is_new;
+        const clusterText = cluster.length > 0 ? cluster.join(', ') : '';
+        const newBadge = isNew ? '<span class="text-xs text-amber-700 ml-1">(new)</span>' : '';
+        const count = tagCounts[tagName] !== undefined ? tagCounts[tagName] : 0;
+
+        // Show dropdown trigger if there are candidates (alternative existing tags)
+        let dropdownHtml = '';
+        if (candidates.length > 0) {
+            const pct = Math.round((cat.similarity || 0) * 100);
+            dropdownHtml = `<span class="candidates-trigger" onclick="event.stopPropagation(); toggleParentCandidates(this, ${idx})">${pct}% ▾</span>`;
+        }
+
+        container.innerHTML += `<div class="inline-block mr-2 mb-2" style="position:relative;">
+            <span class="suggestion-chip" onclick="addParentCategory('${esc(tagName)}')">+ ${tagName} <span class="text-xs" style="opacity:0.6">(${count})</span>${dropdownHtml}${newBadge}</span>
+            ${clusterText ? `<span class="text-xs text-amber-700 block ml-2">covers: ${clusterText}</span>` : ''}
+        </div>`;
+    });
+}
+
+function toggleParentCandidates(trigger, catIdx) {
+    document.querySelectorAll('.candidates-dropdown').forEach(d => d.remove());
+
+    const cat = parentCategoryData[catIdx];
+    if (!cat || !cat.candidates || cat.candidates.length === 0) return;
+
+    // Build options: candidates + current + original suggestion, sorted by count then similarity
+    let options = cat.candidates.map(c => ({name: c.name, similarity: c.similarity}));
+    // Add current tag if not in list
+    if (!options.some(o => o.name === cat.tag)) {
+        options.push({name: cat.tag, similarity: cat.similarity || 1.0});
+    }
+    // Add original suggestion if different and not in list
+    if (cat.original_suggestion && cat.original_suggestion !== cat.tag && !options.some(o => o.name === cat.original_suggestion)) {
+        options.push({name: cat.original_suggestion, similarity: 0});
+    }
+    options.sort((a, b) => {
+        const countA = tagCounts[a.name] || 0;
+        const countB = tagCounts[b.name] || 0;
+        if (countB !== countA) return countB - countA;
+        return b.similarity - a.similarity;
+    });
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'candidates-dropdown';
+    dropdown.style.display = 'block';
+    dropdown.innerHTML = options.map(c => {
+        const pct = Math.round(c.similarity * 100);
+        const count = tagCounts[c.name] !== undefined ? tagCounts[c.name] : 0;
+        const isCurrent = c.name === cat.tag;
+        const style = isCurrent ? ' style="font-weight:600; background:#eef2ff;"' : '';
+        return `<div class="candidates-dropdown-item"${style} onclick="selectParentCandidate(${catIdx}, '${esc(c.name)}')">${c.name} (${count}) ${pct}%</div>`;
+    }).join('');
+    trigger.parentElement.parentElement.appendChild(dropdown);
+}
+
+function selectParentCandidate(catIdx, tagName) {
+    parentCategoryData[catIdx].tag = tagName;
+    document.querySelectorAll('.candidates-dropdown').forEach(d => d.remove());
+    renderParentCategories(parentCategoryData);
+}
+
+function addParentCategory(tagName) {
+    tagName = tagName.trim().toLowerCase();
+    if (!tagName) return;
+    if (userTags.has(tagName) || llmTags.has(tagName) || detectedTags.has(tagName)) return;
+    userTags.add(tagName);
+    renderAll();
 }
 
 // === Add/Remove actions ===
