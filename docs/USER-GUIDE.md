@@ -6,7 +6,7 @@
 |---------|-------------|
 | **AI-Powered Tagging** | LLM generates 8 content tags per bookmark using OpenAI, Anthropic, or Google |
 | **Smart Tag Matching** | Suggested tags checked against your existing tags — duplicates auto-merged, similar tags shown with alternatives |
-| **Metadata Detection** | Auto-detects `source:medium.com`, `format:video`, `format:pdf`, `format:repository`, `format:article` |
+| **Metadata Detection** | Auto-detects `source:{domain}` (e.g., `source:medium.com`) for any URL, plus `format:video`, `format:pdf`, `format:repository`, `format:article` |
 | **Category Inference** | Clusters content tags and suggests broader parent categories (e.g., "software-development") |
 | **Related Bookmarks** | Shows existing bookmarks with matching URL paths — click to inherit their tags |
 | **Rating System** | Rate bookmarks 1-10 with one click, stored as `rating=7_10` tag |
@@ -32,10 +32,14 @@
 
 ### Prerequisites
 
-- Python 3.10+
-- Poetry package manager
-- Diigo account with API key
-- At least one LLM API key (OpenAI, Anthropic, or Google)
+- **Python 3.10+** — [Download](https://www.python.org/downloads/). Verify with `python3 --version`.
+- **Poetry** — Python package manager. [Install guide](https://python-poetry.org/docs/#installation). Verify with `poetry --version`.
+- **Diigo account + API key** — Sign up at [diigo.com](https://www.diigo.com), then get your API key from [Diigo API console](https://www.diigo.com/api_dev).
+- **At least one LLM API key:**
+  - [OpenAI](https://platform.openai.com/api-keys) — uses GPT-4o-mini (cheapest, recommended to start)
+  - [Anthropic](https://console.anthropic.com/settings/keys) — uses Claude Haiku
+  - [Google](https://aistudio.google.com/app/apikey) — uses Gemini Pro
+  - You can configure multiple — the system falls back automatically if one fails
 
 ### Setup
 
