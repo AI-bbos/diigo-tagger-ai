@@ -178,6 +178,12 @@
                         <div id="detected-tags-container"></div>
                     </div>
 
+                    <!-- Related Bookmarks -->
+                    <div id="related-bookmarks-section" class="hidden mb-4 bg-purple-50 border border-purple-200 rounded-lg p-4">
+                        <h5 class="text-sm font-medium text-purple-900 mb-2">Related bookmarks (similar URL path):</h5>
+                        <div id="related-bookmarks-container"></div>
+                    </div>
+
                     <!-- Suggested parent categories (click + to add) -->
                     <div id="parent-categories-section" class="hidden mb-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
                         <h5 class="text-sm font-medium text-amber-900 mb-2">Suggested categories (click + to add):</h5>
@@ -395,6 +401,9 @@ function showPreview(data) {
     selectedRating = 0;
     document.querySelectorAll('#rating-widget .rating-btn').forEach(btn => btn.classList.remove('active'));
 
+    // Related bookmarks
+    renderRelatedBookmarks(data.related_bookmarks || []);
+
     // Prefix inputs
     renderPrefixInputs();
 }
@@ -406,6 +415,30 @@ function renderAll() {
     renderLlmTags();
     renderDetectedTags();
     renderRemovedSuggestions();
+}
+
+function renderRelatedBookmarks(related) {
+    const section = document.getElementById('related-bookmarks-section');
+    const container = document.getElementById('related-bookmarks-container');
+    if (!related || related.length === 0) {
+        section.classList.add('hidden');
+        return;
+    }
+    section.classList.remove('hidden');
+    container.innerHTML = related.map(bm => {
+        const tagsHtml = (bm.tags || []).map(t =>
+            `<span class="suggestion-chip" onclick="addPreviewTag('${esc(t)}')">${t}</span>`
+        ).join('');
+        const segments = bm.path_match_segments || 0;
+        const segLabel = segments === 1 ? '1 path segment' : `${segments} path segments`;
+        return `<div class="mb-2 p-2 bg-white rounded border border-purple-100">
+            <div class="flex items-center justify-between">
+                <a href="${bm.url}" target="_blank" class="text-sm font-medium text-purple-700 hover:underline truncate">${bm.title || bm.url}</a>
+                <span class="text-xs text-purple-500 ml-2 whitespace-nowrap">${segLabel}</span>
+            </div>
+            <div class="mt-1">${tagsHtml}</div>
+        </div>`;
+    }).join('');
 }
 
 function makeChip(tag, cssClass, extraHtml, onRemoveAction) {
@@ -714,12 +747,17 @@ previewTagsInput.addEventListener('input', () => {
         try {
             const resp = await fetch(`/api/v1/tags/autocomplete?prefix=&q=${encodeURIComponent(query)}&limit=10`);
             const data = await resp.json();
+            // Merge counts from autocomplete response
+            if (data.tag_counts) {
+                Object.assign(tagCounts, data.tag_counts);
+            }
             const allCurrent = new Set([...userTags, ...llmTags, ...detectedTags]);
             const filtered = (data.tags || []).filter(t => !allCurrent.has(t));
             if (filtered.length > 0) {
-                autocompleteDropdown.innerHTML = filtered.map(t =>
-                    `<div class="tag-autocomplete-item" onclick="selectAutocompleteTag('${esc(t)}')">${t}</div>`
-                ).join('');
+                autocompleteDropdown.innerHTML = filtered.map(t => {
+                    const count = tagCounts[t] !== undefined ? tagCounts[t] : 0;
+                    return `<div class="tag-autocomplete-item" onclick="selectAutocompleteTag('${esc(t)}')">${t} (${count})</div>`;
+                }).join('');
                 autocompleteDropdown.classList.remove('hidden');
             } else {
                 autocompleteDropdown.classList.add('hidden');
