@@ -2,7 +2,7 @@
 name = "diigo-tagger-ai"
 version = "1.0.0"
 description = "AI-powered bookmark management for Diigo — smart tagging, similarity matching, and category inference"
-authors = ["Brooke Smith <brooke@oehmsmith.com>"]
+authors = ["Brooke Smith <2556595+oehm-smith@users.noreply.github.com>"]
 license = "AGPL-3.0-or-later"
 readme = "README.md"
 homepage = "https://github.com/AI-bbos/diigo-tagger-ai"
