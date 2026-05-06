@@ -272,6 +272,7 @@ async def prepare_bookmark(request: AddBookmarkRequest):
             title=request.title,
             description=request.description,
             tags=request.tags,
+            force_retag=request.force_retag,
         )
 
         llm_suggestions = None

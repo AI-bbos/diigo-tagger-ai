@@ -298,6 +298,7 @@ class BookmarkService:
         title: Optional[str] = None,
         description: Optional[str] = None,
         tags: Optional[List[str]] = None,
+        force_retag: bool = False,
     ) -> Dict:
         """
         Prepare bookmark data without submitting to Diigo.
@@ -332,7 +333,8 @@ class BookmarkService:
         metadata = self.metadata_fetcher.fetch_metadata(url)
 
         # If bookmark exists and user didn't provide any overrides, return early
-        if existing_bookmark and not (title or description or tags):
+        # (unless force_retag — then run full tagging pipeline on existing bookmark)
+        if existing_bookmark and not (title or description or tags) and not force_retag:
             existing_tags = [tag.name for tag in existing_bookmark.tags]
             return {
                 "url": url,
