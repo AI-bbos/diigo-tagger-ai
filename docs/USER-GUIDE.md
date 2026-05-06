@@ -32,10 +32,14 @@
 
 ### Prerequisites
 
-- Python 3.10+
-- Poetry package manager
-- Diigo account with API key
-- At least one LLM API key (OpenAI, Anthropic, or Google)
+- **Python 3.10+** — [Download](https://www.python.org/downloads/). Verify with `python3 --version`.
+- **Poetry** — Python package manager. [Install guide](https://python-poetry.org/docs/#installation). Verify with `poetry --version`.
+- **Diigo account + API key** — Sign up at [diigo.com](https://www.diigo.com), then get your API key from [Diigo API console](https://www.diigo.com/api_dev).
+- **At least one LLM API key:**
+  - [OpenAI](https://platform.openai.com/api-keys) — uses GPT-4o-mini (cheapest, recommended to start)
+  - [Anthropic](https://console.anthropic.com/settings/keys) — uses Claude Haiku
+  - [Google](https://aistudio.google.com/app/apikey) — uses Gemini Pro
+  - You can configure multiple — the system falls back automatically if one fails
 
 ### Setup
 
