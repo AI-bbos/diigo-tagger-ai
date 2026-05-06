@@ -9,7 +9,7 @@ AI-powered bookmark management for [Diigo](https://www.diigo.com). Smart tagging
 
 You paste a URL. The system fetches the page, generates tags with an LLM, matches them against your existing tags, detects metadata (source, format, author), infers broader categories, finds related bookmarks you've already saved, and presents it all for review before submitting.
 
-**The key insight:** LLM-generated tags are generic. This system makes them specific to *your* vocabulary by checking every suggestion against your existing 9,600+ tags, showing alternatives ranked by usage, and letting you decide.
+**The key insight:** LLM-generated tags are generic. This system makes them specific to *your* vocabulary by checking every suggestion against your existing tags (the author's library has 9,600+), showing alternatives ranked by usage, and letting you decide.
 
 ### Feature Highlights
 
