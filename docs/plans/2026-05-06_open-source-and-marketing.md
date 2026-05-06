@@ -9,25 +9,28 @@
 - [x] Review commit history for any accidentally committed secrets
 - [x] Update README.md with license badge and "what is this" summary for public audience
 - [x] Audit all 31 direct dependencies against PyPI + blocklist (all clean)
-- [ ] Configure repo settings (see below)
-- [ ] Make repo public on GitHub
-- [ ] Configure branch protection (requires public repo on free plan)
+- [x] Configure repo settings (see below)
+- [x] Make repo public on GitHub
+- [x] Configure branch protection (requires public repo on free plan)
+- [x] Set repo description and topic tags
 
-### Repo Settings (before making public)
+### Repo Settings
 
 - [x] Enable "Delete head branches on merge" (auto-cleanup after PR merge)
-- [ ] Enable "Allow forking" (blocked while private — will enable after making public)
+- [x] Enable "Allow forking" (auto-enabled when made public)
 - [x] Disable wiki (not using it, avoid stale content)
 - [x] Ensure Issues are enabled
+- [x] Set repo description
+- [x] Set topic tags: python, fastapi, ai, bookmarks, diigo, llm, htmx, tagging, sqlalchemy, langchain
 
-### Branch Protection for `main` (after making public)
+### Branch Protection for `main`
 
-- [ ] Require pull request before merging
-- [ ] Require at least 1 approval (for external contributors)
-- [ ] Allow repo admins to bypass (so Brooke can merge her own PRs)
+- [x] Require pull request before merging
+- [x] Require at least 1 approval (for external contributors)
+- [x] Org admin added to bypass list (Brooke can merge own PRs)
 - [ ] Require status checks to pass (once CI is set up)
-- [ ] Do NOT allow force pushes
-- [ ] Do NOT allow branch deletion
+- [x] Do NOT allow force pushes
+- [x] Do NOT allow branch deletion
 
 ### Why AGPL-3.0
 - Covers the network loophole (GPL doesn't protect web services)
