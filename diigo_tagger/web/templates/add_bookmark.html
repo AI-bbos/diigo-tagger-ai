@@ -178,6 +178,12 @@
                         <div id="detected-tags-container"></div>
                     </div>
 
+                    <!-- Related Bookmarks -->
+                    <div id="related-bookmarks-section" class="hidden mb-4 bg-purple-50 border border-purple-200 rounded-lg p-4">
+                        <h5 class="text-sm font-medium text-purple-900 mb-2">Related bookmarks (similar URL path):</h5>
+                        <div id="related-bookmarks-container"></div>
+                    </div>
+
                     <!-- Removed suggestions (click to re-add) -->
                     <div id="removed-suggestions-section" class="hidden mb-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
                         <h5 class="text-sm font-medium text-gray-600 mb-2">Removed suggestions (click + to re-add):</h5>
@@ -386,6 +392,9 @@ function showPreview(data) {
     selectedRating = 0;
     document.querySelectorAll('#rating-widget .rating-btn').forEach(btn => btn.classList.remove('active'));
 
+    // Related bookmarks
+    renderRelatedBookmarks(data.related_bookmarks || []);
+
     // Prefix inputs
     renderPrefixInputs();
 }
@@ -397,6 +406,30 @@ function renderAll() {
     renderLlmTags();
     renderDetectedTags();
     renderRemovedSuggestions();
+}
+
+function renderRelatedBookmarks(related) {
+    const section = document.getElementById('related-bookmarks-section');
+    const container = document.getElementById('related-bookmarks-container');
+    if (!related || related.length === 0) {
+        section.classList.add('hidden');
+        return;
+    }
+    section.classList.remove('hidden');
+    container.innerHTML = related.map(bm => {
+        const tagsHtml = (bm.tags || []).map(t =>
+            `<span class="suggestion-chip" onclick="addPreviewTag('${esc(t)}')">${t}</span>`
+        ).join('');
+        const segments = bm.path_match_segments || 0;
+        const segLabel = segments === 1 ? '1 path segment' : `${segments} path segments`;
+        return `<div class="mb-2 p-2 bg-white rounded border border-purple-100">
+            <div class="flex items-center justify-between">
+                <a href="${bm.url}" target="_blank" class="text-sm font-medium text-purple-700 hover:underline truncate">${bm.title || bm.url}</a>
+                <span class="text-xs text-purple-500 ml-2 whitespace-nowrap">${segLabel}</span>
+            </div>
+            <div class="mt-1">${tagsHtml}</div>
+        </div>`;
+    }).join('');
 }
 
 function makeChip(tag, cssClass, extraHtml, onRemoveAction) {

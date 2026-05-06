@@ -392,6 +392,7 @@ class TestBookmarkServiceTitleFallback:
 
         # No existing bookmark
         mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        mock_session.query.return_value.filter.return_value.filter.return_value.all.return_value = []
 
         # LLM returns tags but no title override
         mock_openai_client.generate_tags.return_value = ["python"]
@@ -456,6 +457,7 @@ class TestBookmarkServiceTitleFallback:
 
         # No existing bookmark
         mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        mock_session.query.return_value.filter.return_value.filter.return_value.all.return_value = []
 
         # Diigo API succeeds
         mock_diigo_client.create_bookmark.return_value = {"success": True}
@@ -546,6 +548,7 @@ class TestPrepareBookmark:
 
         # No existing bookmark
         mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        mock_session.query.return_value.filter.return_value.filter.return_value.all.return_value = []
 
         # LLM returns suggestions
         mock_openai_client.generate_tags.return_value = ["python", "tutorial"]

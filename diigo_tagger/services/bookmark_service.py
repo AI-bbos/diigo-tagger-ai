@@ -231,6 +231,67 @@ class BookmarkService:
                 counts[tag_name] = 0
         return counts
 
+    def _find_related_bookmarks(self, url: str, limit: int = 5) -> List[Dict]:
+        """Find existing bookmarks with matching URL domain and path prefix.
+
+        Args:
+            url: URL to find related bookmarks for.
+            limit: Max related bookmarks to return.
+
+        Returns:
+            List of dicts with keys: url, title, display_id, tags, path_match_segments
+            Sorted by number of matching path segments (most specific first).
+        """
+        parsed = urlparse(url)
+        domain = parsed.netloc
+        if not domain:
+            return []
+
+        # Extract top-level domain for matching
+        domain_parts = domain.split('.')
+        if len(domain_parts) >= 2:
+            tld = '.'.join(domain_parts[-2:])
+        else:
+            tld = domain
+
+        query_segments = [s for s in parsed.path.strip('/').split('/') if s]
+        if not query_segments:
+            return []
+
+        # Find bookmarks on the same domain
+        candidates = (
+            self.session.query(Bookmark)
+            .filter(Bookmark.url.like(f'%{tld}%'))
+            .filter(Bookmark.url != url)
+            .all()
+        )
+
+        results = []
+        for bookmark in candidates:
+            bm_parsed = urlparse(bookmark.url)
+            bm_segments = [s for s in bm_parsed.path.strip('/').split('/') if s]
+
+            # Count matching path segments from the start
+            matches = 0
+            for q, b in zip(query_segments, bm_segments):
+                if q == b:
+                    matches += 1
+                else:
+                    break
+
+            if matches >= 1:
+                results.append({
+                    "url": bookmark.url,
+                    "title": bookmark.title,
+                    "display_id": bookmark.display_id,
+                    "tags": [tag.name for tag in bookmark.tags],
+                    "path_match_segments": matches,
+                })
+
+        # Sort by matching segments descending (most specific first)
+        results.sort(key=lambda r: r["path_match_segments"], reverse=True)
+        return results[:limit]
+
     def prepare_bookmark(
         self,
         url: str,
@@ -293,6 +354,7 @@ class BookmarkService:
                 "detected_tags": [],
                 "tag_matches": [],
                 "author": metadata.get("author", ""),
+                "related_bookmarks": self._find_related_bookmarks(url),
             }
 
         # Use already-fetched metadata
@@ -394,6 +456,7 @@ class BookmarkService:
             "detected_tags": detected_tags,
             "tag_matches": tag_matches,
             "author": metadata.get("author", ""),
+            "related_bookmarks": self._find_related_bookmarks(url),
         }
 
         # If bookmark exists, include conflict info

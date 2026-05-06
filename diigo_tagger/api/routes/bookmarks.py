@@ -291,6 +291,7 @@ async def prepare_bookmark(request: AddBookmarkRequest):
             detected_tags=result.get("detected_tags", []),
             tag_matches=result.get("tag_matches", []),
             author=result.get("author", ""),
+            related_bookmarks=result.get("related_bookmarks", []),
         )
 
     finally:
