@@ -20,7 +20,7 @@
 ## 2. PyPI Distribution
 
 ### Tasks
-- [ ] Verify `pyproject.toml` has correct metadata (description, author, URLs, classifiers)
+- [x] Verify `pyproject.toml` has correct metadata (description, author, URLs, classifiers)
 - [ ] Create PyPI account at pypi.org (if not already)
 - [ ] Configure Poetry for PyPI publishing (`poetry config pypi-token.pypi <token>`)
 - [ ] Test with TestPyPI first (`poetry publish --repository testpypi`)
