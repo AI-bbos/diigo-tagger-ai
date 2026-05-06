@@ -178,6 +178,12 @@
                         <div id="detected-tags-container"></div>
                     </div>
 
+                    <!-- Suggested parent categories (click + to add) -->
+                    <div id="parent-categories-section" class="hidden mb-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                        <h5 class="text-sm font-medium text-amber-900 mb-2">Suggested categories (click + to add):</h5>
+                        <div id="parent-categories-container"></div>
+                    </div>
+
                     <!-- Removed suggestions (click to re-add) -->
                     <div id="removed-suggestions-section" class="hidden mb-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
                         <h5 class="text-sm font-medium text-gray-600 mb-2">Removed suggestions (click + to re-add):</h5>
@@ -372,6 +378,9 @@ function showPreview(data) {
         }
     });
 
+    // Render parent categories
+    renderParentCategories(data.parent_categories || []);
+
     renderAll();
 
     // Auto-populate author prefix field if metadata has author
@@ -463,6 +472,38 @@ function renderRemovedSuggestions() {
     removedSuggestions.forEach(tag => {
         container.innerHTML += `<span class="suggestion-chip" onclick="reAddSuggestion('${esc(tag)}')">${tag} +</span>`;
     });
+}
+
+function renderParentCategories(categories) {
+    const container = document.getElementById('parent-categories-container');
+    const section = document.getElementById('parent-categories-section');
+    if (!categories || categories.length === 0) {
+        section.classList.add('hidden');
+        return;
+    }
+    section.classList.remove('hidden');
+    container.innerHTML = '';
+    categories.forEach(cat => {
+        const tagName = cat.tag;
+        const cluster = cat.cluster || [];
+        const isNew = cat.is_new;
+        const matchInfo = cat.matched_existing ? ` (matched: ${cat.matched_existing})` : '';
+        const clusterText = cluster.length > 0 ? cluster.join(', ') : '';
+        const newBadge = isNew ? '<span class="text-xs text-amber-700 ml-1">(new)</span>' : '';
+        const count = tagCounts[tagName] !== undefined ? tagCounts[tagName] : '?';
+        container.innerHTML += `<div class="inline-block mr-2 mb-2">
+            <span class="suggestion-chip" onclick="addParentCategory('${esc(tagName)}')">+ ${tagName} <span class="text-xs" style="opacity:0.6">(${count})</span>${newBadge}</span>
+            ${clusterText ? `<span class="text-xs text-amber-700 block ml-2">covers: ${clusterText}</span>` : ''}
+        </div>`;
+    });
+}
+
+function addParentCategory(tagName) {
+    tagName = tagName.trim().toLowerCase();
+    if (!tagName) return;
+    if (userTags.has(tagName) || llmTags.has(tagName) || detectedTags.has(tagName)) return;
+    userTags.add(tagName);
+    renderAll();
 }
 
 // === Add/Remove actions ===

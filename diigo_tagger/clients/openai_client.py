@@ -1,7 +1,7 @@
 # ABOUTME: OpenAI API client for tag generation (now wraps LLMRouter)
 # ABOUTME: Backward-compatible wrapper around LLMRouter for multi-provider support
 
-from typing import List
+from typing import Dict, List
 import logging
 
 from .llm_router import LLMRouter
@@ -83,3 +83,19 @@ class OpenAIClient:
 
         # Return just the tags for backward compatibility
         return result["tags"]
+
+    def generate_categories(
+        self, tags: List[str], title: str = "", description: str = ""
+    ) -> List[Dict]:
+        """Generate parent categories for content tags.
+
+        Args:
+            tags: Content tags to cluster.
+            title: Bookmark title for context.
+            description: Bookmark description for context.
+
+        Returns:
+            List of {parent, cluster} dicts.
+        """
+        result = self.router.generate_categories(tags=tags, title=title, description=description)
+        return result["categories"]

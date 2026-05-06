@@ -293,6 +293,7 @@ class BookmarkService:
                 "detected_tags": [],
                 "tag_matches": [],
                 "author": metadata.get("author", ""),
+                "parent_categories": [],
             }
 
         # Use already-fetched metadata
@@ -371,6 +372,15 @@ class BookmarkService:
             if tag_name not in final_tags:
                 final_tags.append(tag_name)
 
+        # Infer parent categories via LCA
+        from .tag_hierarchy import TagHierarchyService
+        hierarchy_service = TagHierarchyService(self.session, self.openai_client)
+        parent_categories = hierarchy_service.infer_parent_categories(
+            tags=llm_tags,
+            title=final_title or "",
+            description=final_description or "",
+        )
+
         # Look up usage counts for all tags (user + LLM + detected)
         detected_tag_names = [dt["tag"] for dt in detected_tags]
         all_tag_names = list(set(final_tags + llm_tags + detected_tag_names))
@@ -394,6 +404,7 @@ class BookmarkService:
             "detected_tags": detected_tags,
             "tag_matches": tag_matches,
             "author": metadata.get("author", ""),
+            "parent_categories": parent_categories,
         }
 
         # If bookmark exists, include conflict info

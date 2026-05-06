@@ -249,3 +249,100 @@ Generate relevant tags for this bookmark."""
         raise Exception(
             f"All LLM providers failed. Errors: {error_summary}"
         )
+
+    def generate_categories(
+        self,
+        tags: List[str],
+        title: str = "",
+        description: str = "",
+        max_categories: int = 3,
+    ) -> Dict[str, Any]:
+        """Infer parent category tags by clustering content tags (LCA approach).
+
+        Uses the LLM's internal ontological knowledge to group tags and find
+        their most specific shared parent categories.
+
+        Args:
+            tags: Content tags to find parents for.
+            title: Bookmark title for context.
+            description: Bookmark description for context.
+            max_categories: Maximum categories to suggest.
+
+        Returns:
+            Dict with keys: categories (list of dicts), provider, model, fallback.
+            Each category dict: {parent: str, cluster: [str]}.
+        """
+        import json
+        import re
+
+        system_prompt = (
+            "You are a tag categorization assistant. Given content tags from a "
+            "bookmark, group them into clusters and find the most specific shared "
+            "parent category for each cluster.\n\n"
+            "Rules:\n"
+            "- Suggest 1-3 parent categories maximum\n"
+            "- Don't suggest categories that are too broad (e.g., \"technology\", "
+            "\"information\", \"content\")\n"
+            "- Don't suggest categories identical to the input tags\n"
+            "- Each parent should be more general than its cluster but still "
+            "specific enough to be useful for organizing bookmarks\n"
+            "- Use lowercase, hyphenated format (e.g., \"software-development\", "
+            "\"personal-finance\")\n"
+            "- Respond ONLY with JSON array, no explanations\n\n"
+            "Format: [{\"parent\": \"category-name\", \"cluster\": [\"tag1\", \"tag2\"]}]"
+        )
+
+        user_prompt = f"Tags: {', '.join(tags)}\nTitle: {title}\n\nGroup these tags and suggest parent categories."
+
+        # Try providers in order
+        errors = []
+        providers_attempted = 0
+
+        for provider in self.providers:
+            if not provider.available:
+                continue
+
+            try:
+                logger.debug(f"Attempting category generation with {provider.name}")
+
+                messages = [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_prompt),
+                ]
+
+                response = provider.client.invoke(messages)
+                content = response.content.strip()
+
+                # Strip markdown code fences if present
+                content = re.sub(r"^```(?:json)?\s*", "", content)
+                content = re.sub(r"\s*```$", "", content)
+
+                categories = json.loads(content)
+
+                # Validate structure
+                if not isinstance(categories, list):
+                    categories = []
+                categories = [
+                    c for c in categories
+                    if isinstance(c, dict) and "parent" in c and "cluster" in c
+                ][:max_categories]
+
+                fallback_used = providers_attempted > 0
+
+                return {
+                    "categories": categories,
+                    "provider": provider.name,
+                    "model": provider.model,
+                    "fallback": fallback_used,
+                }
+
+            except Exception as e:
+                error_msg = f"{provider.name}: {str(e)}"
+                errors.append(error_msg)
+                logger.warning(f"Provider {provider.name} failed for categories: {e}")
+                providers_attempted += 1
+                continue
+
+        # All providers failed — return empty rather than raising
+        logger.warning(f"All providers failed for category generation: {'; '.join(errors)}")
+        return {"categories": [], "provider": None, "model": None, "fallback": True}
