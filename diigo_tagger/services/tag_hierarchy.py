@@ -81,9 +81,11 @@ class TagHierarchyService:
             matched_existing = None
             similarity = 0.0
 
+            candidates = []
             if match and match.get("action") in ("auto_accept", "confirm"):
                 matched_existing = match["matched"]
                 similarity = match["similarity"]
+                candidates = match.get("candidates", [])
 
             results.append({
                 "tag": matched_existing or parent,
@@ -92,6 +94,7 @@ class TagHierarchyService:
                 "matched_existing": matched_existing,
                 "similarity": similarity,
                 "is_new": matched_existing is None,
+                "candidates": candidates,
             })
 
         return results

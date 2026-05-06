@@ -381,9 +381,17 @@ class BookmarkService:
             description=final_description or "",
         )
 
-        # Look up usage counts for all tags (user + LLM + detected)
+        # Look up usage counts for all tags (user + LLM + detected + parent categories + candidates)
         detected_tag_names = [dt["tag"] for dt in detected_tags]
-        all_tag_names = list(set(final_tags + llm_tags + detected_tag_names))
+        parent_tag_names = [pc["tag"] for pc in parent_categories]
+        # Also include candidate names from parent category matches for dropdown display
+        parent_candidate_names = []
+        for pc in parent_categories:
+            if pc.get("candidates"):
+                parent_candidate_names.extend([c["name"] for c in pc["candidates"]])
+        all_tag_names = list(set(
+            final_tags + llm_tags + detected_tag_names + parent_tag_names + parent_candidate_names
+        ))
         tag_counts = self._get_tag_counts(all_tag_names)
 
         # Build result
