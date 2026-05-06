@@ -388,6 +388,59 @@ class TestArticleDetection:
         assert result["has_article_tag"] is False
 
 
+@patch("diigo_tagger.clients.metadata_fetcher.requests.get")
+class TestAuthorExtraction:
+    """Test author extraction from webpage metadata."""
+
+    def test_extracts_author_from_meta_name(self, mock_get):
+        """Should extract author from <meta name='author'>."""
+        html = b'<html><head><meta name="author" content="Jane Smith"></head><body></body></html>'
+        mock_response = Mock()
+        mock_response.content = html
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        fetcher = MetadataFetcher()
+        result = fetcher._fetch_webpage_metadata("https://example.com")
+        assert result["author"] == "Jane Smith"
+
+    def test_extracts_author_from_og_article_author(self, mock_get):
+        """Should extract author from og:article:author meta property."""
+        html = b'<html><head><meta property="article:author" content="John Doe"></head><body></body></html>'
+        mock_response = Mock()
+        mock_response.content = html
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        fetcher = MetadataFetcher()
+        result = fetcher._fetch_webpage_metadata("https://example.com")
+        assert result["author"] == "John Doe"
+
+    def test_extracts_author_from_rel_author_link(self, mock_get):
+        """Should extract author from <a rel='author'>."""
+        html = b'<html><head></head><body><a rel="author">Sarah Connor</a></body></html>'
+        mock_response = Mock()
+        mock_response.content = html
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        fetcher = MetadataFetcher()
+        result = fetcher._fetch_webpage_metadata("https://example.com")
+        assert result["author"] == "Sarah Connor"
+
+    def test_returns_empty_when_no_author(self, mock_get):
+        """Should return empty string when no author metadata found."""
+        html = b'<html><head><title>No Author</title></head><body></body></html>'
+        mock_response = Mock()
+        mock_response.content = html
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        fetcher = MetadataFetcher()
+        result = fetcher._fetch_webpage_metadata("https://example.com")
+        assert result["author"] == ""
+
+
 class TestTitleFromUrlPath:
     """Test URL path slug to title conversion."""
 

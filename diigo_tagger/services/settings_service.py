@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..models import Setting
 
 _TAG_PREFIXES_KEY = "tag_prefixes"
-_DEFAULT_TAG_PREFIXES = ["reference:"]
+_DEFAULT_TAG_PREFIXES = ["author:", "reference:"]
 
 
 class SettingsService:

@@ -262,15 +262,15 @@ class TestBookmarkServiceAdd:
         )
         existing_bookmark.tags = [existing_tag]
 
-        # prepare_bookmark queries: bookmark check + tag count lookups,
-        # submit_bookmark queries: bookmark check + tag lookups
+        # prepare_bookmark queries: bookmark check, tag count lookups for each tag,
+        # submit_bookmark queries: bookmark check, tag lookups for each tag to save.
+        # Use a long list of Nones with existing_bookmark at known positions.
         mock_session.query.return_value.filter_by.return_value.first.side_effect = [
             existing_bookmark,  # prepare_bookmark: check if bookmark exists
-            None,  # _get_tag_counts: lookup "new-tag"
+            None,  # _get_tag_counts: lookup tag
+            None,  # _get_tag_counts: lookup tag
             existing_bookmark,  # submit_bookmark: check if bookmark exists
-            None,  # submit_bookmark: tag lookup for "old-tag"
-            None,  # submit_bookmark: tag lookup for "new-tag"
-            None,  # submit_bookmark: tag lookup for "source:example.com" (detected)
+            None, None, None, None, None,  # submit_bookmark: tag lookups
         ]
         # _get_tag_counts uses select_from().filter().scalar() — mock returns 0
         mock_session.query.return_value.select_from.return_value.filter.return_value.scalar.return_value = 0

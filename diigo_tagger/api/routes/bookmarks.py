@@ -290,6 +290,7 @@ async def prepare_bookmark(request: AddBookmarkRequest):
             display_id=result["display_id"],
             detected_tags=result.get("detected_tags", []),
             tag_matches=result.get("tag_matches", []),
+            author=result.get("author", ""),
         )
 
     finally:
@@ -357,7 +358,7 @@ async def submit_bookmark(request: SubmitBookmarkRequest):
 
 @router.get("/tags/autocomplete")
 async def tag_autocomplete(
-    prefix: str = Query(..., description="Tag prefix to filter by"),
+    prefix: str = Query("", description="Tag prefix to filter by (optional)"),
     q: str = Query("", description="Optional query to further filter"),
     limit: int = Query(20, ge=1, le=100, description="Max results"),
 ):

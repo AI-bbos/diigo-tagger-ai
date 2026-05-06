@@ -76,8 +76,12 @@ class TestTagAutocomplete:
         assert data["prefix"] == "reference:"
         assert len(data["tags"]) == 2
 
-    def test_autocomplete_requires_prefix(self, client):
-        """Should return 422 when prefix parameter is missing."""
-        response = client.get("/api/v1/tags/autocomplete")
+    @patch("diigo_tagger.api.routes.bookmarks.get_session")
+    def test_autocomplete_without_prefix(self, mock_get_session, client):
+        """Should return 200 with empty prefix (general tag search)."""
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter.return_value.limit.return_value.all.return_value = []
+        mock_get_session.return_value = mock_session
 
-        assert response.status_code == 422
+        response = client.get("/api/v1/tags/autocomplete")
+        assert response.status_code == 200

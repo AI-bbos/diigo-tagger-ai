@@ -13,6 +13,7 @@
         border-radius: 9999px;
         font-size: 0.875rem;
         margin: 0.25rem;
+        position: relative;
     }
     .tag-chip-remove {
         margin-left: 0.5rem;
@@ -22,18 +23,11 @@
     .tag-chip-remove:hover {
         color: #dc2626;
     }
-    .tag-suggestion {
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-    .tag-suggestion:hover {
-        background-color: #dbeafe;
-    }
-    .llm-tag-chip {
+    .suggestion-chip {
         display: inline-flex;
         align-items: center;
-        background-color: #d1fae5;
-        color: #065f46;
+        background-color: #f3f4f6;
+        color: #6b7280;
         padding: 0.25rem 0.75rem;
         border-radius: 9999px;
         font-size: 0.875rem;
@@ -41,23 +35,9 @@
         cursor: pointer;
         transition: all 0.2s;
     }
-    .llm-tag-chip:hover {
-        background-color: #a7f3d0;
-    }
-    .detected-tag-chip {
-        display: inline-flex;
-        align-items: center;
-        background-color: #dbeafe;
-        color: #1e40af;
-        padding: 0.25rem 0.75rem;
-        border-radius: 9999px;
-        font-size: 0.875rem;
-        margin: 0.25rem;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-    .detected-tag-chip:hover {
-        background-color: #bfdbfe;
+    .suggestion-chip:hover {
+        background-color: #e5e7eb;
+        color: #374151;
     }
     .similarity-hint {
         font-size: 0.7rem;
@@ -85,6 +65,52 @@
         color: white;
         border-color: #4f46e5;
     }
+    .tag-autocomplete {
+        position: absolute;
+        z-index: 50;
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 0.375rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        max-height: 200px;
+        overflow-y: auto;
+        width: 100%;
+    }
+    .tag-autocomplete-item {
+        padding: 0.375rem 0.75rem;
+        cursor: pointer;
+        font-size: 0.875rem;
+    }
+    .tag-autocomplete-item:hover {
+        background-color: #eef2ff;
+    }
+    .candidates-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        z-index: 50;
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 0.375rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        min-width: 150px;
+    }
+    .candidates-dropdown-item {
+        padding: 0.25rem 0.75rem;
+        cursor: pointer;
+        font-size: 0.8rem;
+        white-space: nowrap;
+    }
+    .candidates-dropdown-item:hover {
+        background-color: #eef2ff;
+    }
+    .candidates-trigger {
+        cursor: pointer;
+        font-size: 0.7rem;
+        color: #6366f1;
+        margin-left: 0.25rem;
+        text-decoration: underline;
+    }
 </style>
 {% endblock %}
 
@@ -92,101 +118,70 @@
 <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="bg-white shadow sm:rounded-lg">
         <div class="px-4 py-5 sm:p-6">
-            <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">
-                Add New Bookmark
-            </h3>
+            <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">Add New Bookmark</h3>
 
-            <!-- Status Messages -->
             <div id="status-message" class="hidden mb-4 rounded-md p-4"></div>
 
             <!-- Phase 1: URL Entry -->
             <form id="url-form" class="space-y-6">
-                <!-- URL Field -->
                 <div>
-                    <label for="url" class="block text-sm font-medium text-gray-700">
-                        URL <span class="text-red-500">*</span>
-                    </label>
-                    <div class="mt-1 flex rounded-md shadow-sm">
-                        <input type="url"
-                               name="url"
-                               id="url"
-                               required
-                               placeholder="https://example.com/article"
-                               class="flex-1 block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
-                    </div>
+                    <label for="url" class="block text-sm font-medium text-gray-700">URL <span class="text-red-500">*</span></label>
+                    <input type="url" name="url" id="url" required placeholder="https://example.com/article"
+                           class="mt-1 flex-1 block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
                     <p class="mt-1 text-sm text-gray-500">Enter URL and click Preview to fetch metadata and generate tags</p>
                 </div>
-
                 <div class="flex items-center justify-end space-x-4">
-                    <button type="button"
-                            onclick="window.location.href='/'"
-                            class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                        Cancel
-                    </button>
-                    <button type="submit"
-                            id="preview-btn"
-                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                        Preview
-                    </button>
+                    <button type="button" onclick="window.location.href='/'"
+                            class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</button>
+                    <button type="submit" id="preview-btn"
+                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">Preview</button>
                 </div>
             </form>
 
-            <!-- Phase 2: Review & Edit (hidden until preview loads) -->
+            <!-- Phase 2: Review & Edit -->
             <div id="preview-ui" class="hidden space-y-6">
                 <div class="border-t border-gray-200 pt-4">
-                    <h4 class="text-md font-medium text-gray-900 mb-4">
-                        Review Bookmark
-                    </h4>
+                    <h4 class="text-md font-medium text-gray-900 mb-4">Review Bookmark</h4>
 
-                    <!-- Title Field -->
                     <div class="mb-4">
-                        <label for="preview-title" class="block text-sm font-medium text-gray-700">
-                            Title
-                        </label>
-                        <input type="text"
-                               id="preview-title"
-                               class="mt-1 block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
+                        <label for="preview-title" class="block text-sm font-medium text-gray-700">Title</label>
+                        <input type="text" id="preview-title" class="mt-1 block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
                         <p id="title-warning" class="hidden mt-1 text-sm text-yellow-600">No title found - please provide one</p>
                     </div>
 
-                    <!-- Description Field -->
                     <div class="mb-4">
-                        <label for="preview-description" class="block text-sm font-medium text-gray-700">
-                            Description
-                        </label>
-                        <textarea id="preview-description"
-                                  rows="3"
-                                  class="mt-1 block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2"></textarea>
+                        <label for="preview-description" class="block text-sm font-medium text-gray-700">Description</label>
+                        <textarea id="preview-description" rows="3" class="mt-1 block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2"></textarea>
                     </div>
 
-                    <!-- Tags -->
+                    <!-- Your tags (manually added) -->
                     <div class="mb-4">
-                        <label for="preview-tags-input" class="block text-sm font-medium text-gray-700">
-                            Tags
-                        </label>
-                        <div class="mt-1">
-                            <input type="text"
-                                   id="preview-tags-input"
-                                   placeholder="Press Enter to add tag"
-                                   class="block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
+                        <label class="block text-sm font-medium text-gray-700">Tags</label>
+                        <div class="mt-1 relative">
+                            <input type="text" id="preview-tags-input"
+                                   placeholder="Type to search existing tags or press Enter to add new"
+                                   class="block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2" autocomplete="off">
+                            <div id="tag-autocomplete-dropdown" class="tag-autocomplete hidden"></div>
                         </div>
-                        <div id="preview-tags-container" class="mt-2 min-h-[2rem]">
-                            <!-- Tag chips rendered here -->
-                        </div>
+                        <div id="user-tags-container" class="mt-2 min-h-[1rem]"></div>
                     </div>
 
-                    <!-- LLM Suggestions (if any) -->
-                    <div id="llm-suggestions" class="hidden mb-4 bg-green-50 border border-green-200 rounded-lg p-4">
-                        <h5 class="text-sm font-medium text-green-900 mb-2">AI-suggested tags (click to add):</h5>
-                        <div id="llm-tags-container">
-                            <!-- LLM tag chips rendered here -->
-                        </div>
+                    <!-- AI-generated tags (auto-added, removable) -->
+                    <div id="llm-tags-section" class="hidden mb-4 bg-green-50 border border-green-200 rounded-lg p-4">
+                        <h5 class="text-sm font-medium text-green-900 mb-2">AI-generated tags (already added — click × to remove):</h5>
+                        <div id="llm-tags-container"></div>
                     </div>
 
-                    <!-- Detected Metadata Tags -->
+                    <!-- Detected metadata tags (auto-added, removable) -->
                     <div id="detected-tags-section" class="hidden mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <h5 class="text-sm font-medium text-blue-900 mb-2">Detected metadata tags:</h5>
+                        <h5 class="text-sm font-medium text-blue-900 mb-2">Detected metadata tags (already added — click × to remove):</h5>
                         <div id="detected-tags-container"></div>
+                    </div>
+
+                    <!-- Removed suggestions (click to re-add) -->
+                    <div id="removed-suggestions-section" class="hidden mb-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <h5 class="text-sm font-medium text-gray-600 mb-2">Removed suggestions (click + to re-add):</h5>
+                        <div id="removed-suggestions-container"></div>
                     </div>
 
                     <!-- Rating Widget -->
@@ -213,128 +208,49 @@
                         <div id="prefix-tags-inputs"></div>
                     </div>
 
-                    <!-- Shared Toggle -->
                     <div class="flex items-center mb-6">
-                        <input type="checkbox"
-                               id="preview-shared"
-                               checked
-                               class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
-                        <label for="preview-shared" class="ml-2 block text-sm text-gray-900">
-                            Make this bookmark public (shared)
-                        </label>
+                        <input type="checkbox" id="preview-shared" checked class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                        <label for="preview-shared" class="ml-2 block text-sm text-gray-900">Make this bookmark public (shared)</label>
                     </div>
 
-                    <!-- Action Buttons -->
                     <div class="flex items-center justify-end space-x-4">
-                        <button type="button"
-                                id="back-btn"
-                                class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                            Back
-                        </button>
-                        <button type="button"
-                                id="confirm-btn"
-                                class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                            Confirm & Submit
-                        </button>
+                        <button type="button" id="back-btn" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Back</button>
+                        <button type="button" id="confirm-btn" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">Confirm & Submit</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Conflict Resolution UI (hidden by default) -->
+            <!-- Conflict Resolution UI -->
             <div id="conflict-ui" class="hidden mt-8 border-t border-gray-200 pt-6">
-                <h4 class="text-md font-medium text-gray-900 mb-4">
-                    Bookmark Already Exists - Choose How to Resolve
-                </h4>
-
+                <h4 class="text-md font-medium text-gray-900 mb-4">Bookmark Already Exists - Choose How to Resolve</h4>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                    <!-- Existing Bookmark -->
                     <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                         <h5 class="font-semibold text-yellow-900 mb-2">Current Bookmark</h5>
                         <div class="text-sm space-y-2">
-                            <div>
-                                <span class="font-medium text-gray-700">Title:</span>
-                                <span id="conflict-existing-title" class="text-gray-900"></span>
-                            </div>
-                            <div>
-                                <span class="font-medium text-gray-700">Description:</span>
-                                <p id="conflict-existing-description" class="text-gray-900 mt-1"></p>
-                            </div>
-                            <div>
-                                <span class="font-medium text-gray-700">Tags:</span>
-                                <div id="conflict-existing-tags" class="mt-1"></div>
-                            </div>
+                            <div><span class="font-medium text-gray-700">Title:</span> <span id="conflict-existing-title"></span></div>
+                            <div><span class="font-medium text-gray-700">Description:</span> <p id="conflict-existing-description" class="mt-1"></p></div>
+                            <div><span class="font-medium text-gray-700">Tags:</span> <div id="conflict-existing-tags" class="mt-1"></div></div>
                         </div>
                     </div>
-
-                    <!-- New Bookmark -->
                     <div class="bg-green-50 border border-green-200 rounded-lg p-4">
                         <h5 class="font-semibold text-green-900 mb-2">New Version</h5>
                         <div class="text-sm space-y-2">
-                            <div>
-                                <span class="font-medium text-gray-700">Title:</span>
-                                <span id="conflict-new-title" class="text-gray-900"></span>
-                            </div>
-                            <div>
-                                <span class="font-medium text-gray-700">Description:</span>
-                                <p id="conflict-new-description" class="text-gray-900 mt-1"></p>
-                            </div>
-                            <div>
-                                <span class="font-medium text-gray-700">Tags:</span>
-                                <div id="conflict-new-tags" class="mt-1"></div>
-                            </div>
+                            <div><span class="font-medium text-gray-700">Title:</span> <span id="conflict-new-title"></span></div>
+                            <div><span class="font-medium text-gray-700">Description:</span> <p id="conflict-new-description" class="mt-1"></p></div>
+                            <div><span class="font-medium text-gray-700">Tags:</span> <div id="conflict-new-tags" class="mt-1"></div></div>
                         </div>
                     </div>
                 </div>
-
-                <!-- Resolution Options -->
                 <div class="space-y-3">
                     <h5 class="font-medium text-gray-900">Choose Resolution Strategy:</h5>
-
-                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                        <input type="radio" name="resolution" value="ooo" class="mt-1 mr-3">
-                        <div>
-                            <div class="font-medium">Keep Original</div>
-                            <div class="text-sm text-gray-600">Keep all existing data, discard new</div>
-                        </div>
-                    </label>
-
-                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                        <input type="radio" name="resolution" value="nnn" class="mt-1 mr-3">
-                        <div>
-                            <div class="font-medium">Replace All</div>
-                            <div class="text-sm text-gray-600">Replace all fields with new data</div>
-                        </div>
-                    </label>
-
-                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                        <input type="radio" name="resolution" value="sss" checked class="mt-1 mr-3">
-                        <div>
-                            <div class="font-medium">Smart Merge (Recommended)</div>
-                            <div class="text-sm text-gray-600">Keep original if new is empty, merge tags</div>
-                        </div>
-                    </label>
-
-                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                        <input type="radio" name="resolution" value="nns" class="mt-1 mr-3">
-                        <div>
-                            <div class="font-medium">Update Title & Description, Merge Tags</div>
-                            <div class="text-sm text-gray-600">Replace title/description, combine tags</div>
-                        </div>
-                    </label>
+                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50"><input type="radio" name="resolution" value="ooo" class="mt-1 mr-3"><div><div class="font-medium">Keep Original</div><div class="text-sm text-gray-600">Keep all existing data</div></div></label>
+                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50"><input type="radio" name="resolution" value="nnn" class="mt-1 mr-3"><div><div class="font-medium">Replace All</div><div class="text-sm text-gray-600">Replace with new data</div></div></label>
+                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50"><input type="radio" name="resolution" value="sss" checked class="mt-1 mr-3"><div><div class="font-medium">Smart Merge (Recommended)</div><div class="text-sm text-gray-600">Keep original if empty, merge tags</div></div></label>
+                    <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50"><input type="radio" name="resolution" value="nns" class="mt-1 mr-3"><div><div class="font-medium">Update Title & Description, Merge Tags</div><div class="text-sm text-gray-600">Replace title/description, combine tags</div></div></label>
                 </div>
-
-                <!-- Conflict Resolution Buttons -->
                 <div class="flex items-center justify-end space-x-4 mt-6">
-                    <button type="button"
-                            id="conflict-cancel-btn"
-                            class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                        Cancel
-                    </button>
-                    <button type="button"
-                            id="conflict-resolve-btn"
-                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
-                        Resolve Conflict
-                    </button>
+                    <button type="button" id="conflict-cancel-btn" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</button>
+                    <button type="button" id="conflict-resolve-btn" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">Resolve Conflict</button>
                 </div>
             </div>
         </div>
@@ -342,16 +258,26 @@
 </div>
 
 <script>
-// State
+// === State ===
 let preparedUrl = '';
 let tagCounts = {};
 let tagMatches = [];
-let detectedTags = [];
 let selectedRating = 0;
-const previewTagsSet = new Set();
-const tagPrefixes = ["reference:"];
+let autocompleteTimeout = null;
 
-// DOM elements
+// Three separate tag sets tracked by origin
+const userTags = new Set();        // manually typed by user
+const llmTags = new Set();         // auto-added from LLM
+const detectedTags = new Set();    // auto-added from MetadataTagDetector
+const removedSuggestions = new Set(); // removed LLM/detected tags (available to re-add)
+
+// Track which tags came from LLM vs detected (for re-add routing)
+let llmTagOrigins = [];    // original LLM suggestion list
+let detectedTagOrigins = []; // original detected tag list
+
+const tagPrefixes = ["author:", "reference:"];
+
+// === DOM ===
 const urlForm = document.getElementById('url-form');
 const previewUI = document.getElementById('preview-ui');
 const previewBtn = document.getElementById('preview-btn');
@@ -359,12 +285,11 @@ const confirmBtn = document.getElementById('confirm-btn');
 const backBtn = document.getElementById('back-btn');
 const statusMessage = document.getElementById('status-message');
 const previewTagsInput = document.getElementById('preview-tags-input');
-const previewTagsContainer = document.getElementById('preview-tags-container');
+const autocompleteDropdown = document.getElementById('tag-autocomplete-dropdown');
 
-// Phase 1: Preview - fetch metadata and LLM suggestions
+// === Phase 1: Preview ===
 urlForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-
     const url = document.getElementById('url').value.trim();
     if (!url) return;
 
@@ -377,32 +302,23 @@ urlForm.addEventListener('submit', async (e) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url })
         });
-
         const data = await response.json();
 
         if (!response.ok) {
-            const errorMsg = data.detail?.detail || data.detail || 'Failed to prepare bookmark';
-            showStatus('error', 'Error', errorMsg);
+            showStatus('error', 'Error', data.detail?.detail || data.detail || 'Failed to prepare bookmark');
             return;
         }
 
-        // Check for conflict (existing bookmark with no changes)
         if (data.conflict && data.conflict.no_changes) {
-            showStatus('warning', 'Bookmark Exists',
-                'This bookmark already exists in your collection with no changes.');
-            // Still show preview so user can review/edit
+            showStatus('warning', 'Bookmark Exists', 'This bookmark is in the Diigo Tagger database but may not be in Diigo. Click Confirm & Submit to ensure it is saved to Diigo.');
         }
-
-        // Check for conflict (existing bookmark with differences)
         if (data.conflict && data.conflict.existing && data.conflict.new) {
             showConflictUI(data);
             return;
         }
 
-        // Show preview with resolved values
         preparedUrl = data.url;
         showPreview(data);
-
     } catch (error) {
         showStatus('error', 'Network Error', 'Failed to connect to server');
     } finally {
@@ -412,206 +328,374 @@ urlForm.addEventListener('submit', async (e) => {
 });
 
 function showPreview(data) {
-    // Hide URL form, show preview
     urlForm.classList.add('hidden');
     previewUI.classList.remove('hidden');
 
-    // Populate fields
     document.getElementById('preview-title').value = data.title || '';
     document.getElementById('preview-description').value = data.description || '';
 
-    // Title warning
     if (data.title_missing) {
         document.getElementById('title-warning').classList.remove('hidden');
     } else {
         document.getElementById('title-warning').classList.add('hidden');
     }
 
-    // Tags and counts
     tagCounts = data.tag_counts || {};
-    previewTagsSet.clear();
-    (data.tags || []).forEach(t => previewTagsSet.add(t));
-    renderPreviewTags();
-
-    // Store tag matches and detected tags
     tagMatches = data.tag_matches || [];
-    detectedTags = data.detected_tags || [];
 
-    // LLM suggestions
-    const llmSuggestions = data.llm_suggestions;
-    const llmContainer = document.getElementById('llm-suggestions');
-    const llmTagsContainer = document.getElementById('llm-tags-container');
+    // Determine which tags are LLM-generated vs detected vs user-provided
+    const llmSuggestionNames = (data.llm_suggestions && data.llm_suggestions.tags) ? data.llm_suggestions.tags : [];
+    const detectedTagList = data.detected_tags || [];
+    const detectedNames = detectedTagList.map(dt => dt.tag);
 
-    if (llmSuggestions && llmSuggestions.tags && llmSuggestions.tags.length > 0) {
-        // Show LLM tags that aren't already in the tag list
-        const unusedTags = llmSuggestions.tags.filter(t => !previewTagsSet.has(t));
-        if (unusedTags.length > 0) {
-            llmContainer.classList.remove('hidden');
-            llmTagsContainer.innerHTML = unusedTags.map(t => {
-                const count = tagCounts[t] !== undefined ? tagCounts[t] : '?';
-                // Check for similarity info
-                const match = tagMatches.find(m => m.suggested === t);
-                let similarityHint = '';
-                if (match && match.action === 'confirm' && match.matched) {
-                    const pct = Math.round(match.similarity * 100);
-                    similarityHint = `<span class="similarity-hint">~${match.matched} (${pct}%)</span>`;
-                }
-                return `<span class="llm-tag-chip" onclick="addPreviewTagFromLLM('${t.replace(/'/g, "\\'")}')">${t} <span class="text-green-500 text-xs">(${count})</span>${similarityHint} +</span>`;
-            }).join('');
+    // Store origins for re-add routing
+    llmTagOrigins = [...llmSuggestionNames];
+    detectedTagOrigins = [...detectedNames];
+
+    // Clear all sets
+    userTags.clear();
+    llmTags.clear();
+    detectedTags.clear();
+    removedSuggestions.clear();
+
+    // Classify each tag in data.tags by origin
+    // Auto-accepted matches have a different name than the original suggestion,
+    // so also check tagMatches for tags that were matched from LLM suggestions
+    const llmMatchedNames = new Set(tagMatches.filter(m => m.matched).map(m => m.matched));
+    (data.tags || []).forEach(t => {
+        if (detectedNames.includes(t)) {
+            detectedTags.add(t);
+        } else if (llmSuggestionNames.includes(t) || llmMatchedNames.has(t)) {
+            llmTags.add(t);
         } else {
-            llmContainer.classList.add('hidden');
+            userTags.add(t);
         }
-    } else {
-        llmContainer.classList.add('hidden');
-    }
-
-    // Detected metadata tags
-    const detectedSection = document.getElementById('detected-tags-section');
-    const detectedContainer = document.getElementById('detected-tags-container');
-    if (detectedTags.length > 0) {
-        // Show detected tags that aren't already in the tag list
-        const unusedDetected = detectedTags.filter(dt => !previewTagsSet.has(dt.tag));
-        if (unusedDetected.length > 0) {
-            detectedSection.classList.remove('hidden');
-            detectedContainer.innerHTML = unusedDetected.map(dt =>
-                `<span class="detected-tag-chip" onclick="addDetectedTag('${dt.tag.replace(/'/g, "\\'")}')">${dt.tag} <span class="text-blue-400 text-xs">(${dt.type})</span> +</span>`
-            ).join('');
-        } else {
-            detectedSection.classList.add('hidden');
-        }
-    } else {
-        detectedSection.classList.add('hidden');
-    }
-
-    // Rating widget
-    selectedRating = 0;
-    document.querySelectorAll('#rating-widget .rating-btn').forEach(btn => {
-        btn.classList.remove('active');
     });
 
-    // Prefix tag inputs
-    const prefixInputsContainer = document.getElementById('prefix-tags-inputs');
-    prefixInputsContainer.innerHTML = tagPrefixes.map(prefix =>
-        `<div class="flex items-center gap-2 mb-2">
-            <span class="text-sm text-gray-600 w-24">${prefix}</span>
-            <input type="text"
-                   data-prefix="${prefix}"
-                   placeholder="Enter value (e.g. ${prefix}example)"
-                   class="prefix-tag-input flex-1 rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
-        </div>`
-    ).join('');
+    renderAll();
+
+    // Auto-populate author prefix field if metadata has author
+    if (data.author) {
+        // Store for use after prefix inputs render
+        window._detectedAuthor = data.author;
+    } else {
+        window._detectedAuthor = '';
+    }
+
+    // Rating
+    selectedRating = 0;
+    document.querySelectorAll('#rating-widget .rating-btn').forEach(btn => btn.classList.remove('active'));
+
+    // Prefix inputs
+    renderPrefixInputs();
 }
 
-// Preview tag management
+// === Rendering ===
+
+function renderAll() {
+    renderUserTags();
+    renderLlmTags();
+    renderDetectedTags();
+    renderRemovedSuggestions();
+}
+
+function makeChip(tag, cssClass, extraHtml, onRemoveAction) {
+    const count = tagCounts[tag] !== undefined ? tagCounts[tag] : '?';
+    // Any tag with candidates (even just 1) gets a dropdown trigger
+    const match = tagMatches.find(m => (m.suggested === tag || m.matched === tag) && m.candidates && m.candidates.length >= 1);
+
+    let candidatesHtml = '';
+    if (match) {
+        const pct = Math.round(match.similarity * 100);
+        candidatesHtml = `<span class="candidates-trigger" onclick="event.stopPropagation(); toggleCandidates(this, '${esc(tag)}')">${pct}% ▾</span>`;
+    }
+
+    return `<span class="${cssClass}">${tag} <span class="text-xs" style="opacity:0.6">(${count})</span>${candidatesHtml}${extraHtml}</span>`;
+}
+
+function esc(s) { return s.replace(/'/g, "\\'"); }
+
+function renderUserTags() {
+    const container = document.getElementById('user-tags-container');
+    container.innerHTML = '';
+    userTags.forEach(tag => {
+        container.innerHTML += makeChip(tag, 'tag-chip', `<span class="tag-chip-remove" onclick="removeUserTag('${esc(tag)}')">&times;</span>`, null);
+    });
+}
+
+function renderLlmTags() {
+    const container = document.getElementById('llm-tags-container');
+    const section = document.getElementById('llm-tags-section');
+    if (llmTags.size === 0) {
+        section.classList.add('hidden');
+        return;
+    }
+    section.classList.remove('hidden');
+    container.innerHTML = '';
+    llmTags.forEach(tag => {
+        container.innerHTML += makeChip(tag, 'tag-chip', `<span class="tag-chip-remove" onclick="removeLlmTag('${esc(tag)}')">&times;</span>`, null);
+    });
+}
+
+function renderDetectedTags() {
+    const container = document.getElementById('detected-tags-container');
+    const section = document.getElementById('detected-tags-section');
+    if (detectedTags.size === 0) {
+        section.classList.add('hidden');
+        return;
+    }
+    section.classList.remove('hidden');
+    container.innerHTML = '';
+    detectedTags.forEach(tag => {
+        container.innerHTML += makeChip(tag, 'tag-chip', `<span class="tag-chip-remove" onclick="removeDetectedTag('${esc(tag)}')">&times;</span>`, null);
+    });
+}
+
+function renderRemovedSuggestions() {
+    const container = document.getElementById('removed-suggestions-container');
+    const section = document.getElementById('removed-suggestions-section');
+    if (removedSuggestions.size === 0) {
+        section.classList.add('hidden');
+        return;
+    }
+    section.classList.remove('hidden');
+    container.innerHTML = '';
+    removedSuggestions.forEach(tag => {
+        container.innerHTML += `<span class="suggestion-chip" onclick="reAddSuggestion('${esc(tag)}')">${tag} +</span>`;
+    });
+}
+
+// === Add/Remove actions ===
+
+function removeUserTag(tag) {
+    userTags.delete(tag);
+    renderAll();
+}
+
+function removeLlmTag(tag) {
+    llmTags.delete(tag);
+    removedSuggestions.add(tag);
+    renderAll();
+}
+
+function removeDetectedTag(tag) {
+    detectedTags.delete(tag);
+    removedSuggestions.add(tag);
+    renderAll();
+}
+
+function reAddSuggestion(tag) {
+    removedSuggestions.delete(tag);
+    // Route back to correct section
+    if (llmTagOrigins.includes(tag)) {
+        llmTags.add(tag);
+    } else if (detectedTagOrigins.includes(tag)) {
+        detectedTags.add(tag);
+    } else {
+        userTags.add(tag);
+    }
+    renderAll();
+}
+
 function addPreviewTag(tagName) {
     tagName = tagName.trim().toLowerCase();
-    if (!tagName || previewTagsSet.has(tagName)) return;
-    previewTagsSet.add(tagName);
-    renderPreviewTags();
-}
-
-function addPreviewTagFromLLM(tagName) {
-    addPreviewTag(tagName);
-    // Remove from LLM suggestions display
-    const llmTagsContainer = document.getElementById('llm-tags-container');
-    const chips = llmTagsContainer.querySelectorAll('.llm-tag-chip');
-    chips.forEach(chip => {
-        if (chip.textContent.replace(' +', '') === tagName) {
-            chip.remove();
-        }
-    });
-    // Hide LLM section if no more suggestions
-    if (llmTagsContainer.children.length === 0) {
-        document.getElementById('llm-suggestions').classList.add('hidden');
+    if (!tagName) return;
+    // Don't add if already in any set
+    if (userTags.has(tagName) || llmTags.has(tagName) || detectedTags.has(tagName)) return;
+    // Remove from removed suggestions if re-adding
+    if (removedSuggestions.has(tagName)) {
+        reAddSuggestion(tagName);
+        return;
     }
+    userTags.add(tagName);
+    renderAll();
 }
 
-function removePreviewTag(tagName) {
-    previewTagsSet.delete(tagName);
-    renderPreviewTags();
-}
+// === Candidates dropdown ===
 
-function addDetectedTag(tagName) {
-    addPreviewTag(tagName);
-    // Remove from detected tags display
-    const container = document.getElementById('detected-tags-container');
-    const chips = container.querySelectorAll('.detected-tag-chip');
-    chips.forEach(chip => {
-        if (chip.textContent.includes(tagName)) {
-            chip.remove();
-        }
+function toggleCandidates(trigger, tagName) {
+    // Close other open dropdowns
+    document.querySelectorAll('.candidates-dropdown').forEach(d => {
+        if (d.parentElement !== trigger.parentElement) d.remove();
     });
-    if (container.children.length === 0) {
-        document.getElementById('detected-tags-section').classList.add('hidden');
+
+    let dropdown = trigger.parentElement.querySelector('.candidates-dropdown');
+    if (dropdown) {
+        dropdown.remove();
+        return;
     }
+
+    const match = tagMatches.find(m => (m.suggested === tagName || m.matched === tagName) && m.candidates && m.candidates.length >= 1);
+    if (!match) return;
+
+    // Build full options list: candidates + current tag, sorted by similarity desc
+    const currentCount = tagCounts[tagName] !== undefined ? tagCounts[tagName] : 0;
+    let options = match.candidates.map(c => ({name: c.name, similarity: c.similarity}));
+    // Add current tag if not already in list
+    if (!options.some(o => o.name === tagName)) {
+        options.push({name: tagName, similarity: match.similarity || 1.0});
+    }
+    options.sort((a, b) => b.similarity - a.similarity);
+
+    dropdown = document.createElement('div');
+    dropdown.className = 'candidates-dropdown';
+    dropdown.innerHTML = options.map(c => {
+        const pct = Math.round(c.similarity * 100);
+        const count = tagCounts[c.name] !== undefined ? tagCounts[c.name] : 0;
+        const isCurrent = c.name === tagName;
+        const style = isCurrent ? ' style="font-weight:600; background:#eef2ff;"' : '';
+        return `<div class="candidates-dropdown-item"${style} onclick="swapTag('${esc(tagName)}', '${esc(c.name)}')">${c.name} (${count}) ${pct}%</div>`;
+    }).join('');
+    trigger.parentElement.style.position = 'relative';
+    trigger.parentElement.appendChild(dropdown);
 }
 
-function renderPreviewTags() {
-    previewTagsContainer.innerHTML = '';
-    previewTagsSet.forEach(tag => {
-        const chip = document.createElement('span');
-        chip.className = 'tag-chip';
-        const count = tagCounts[tag] !== undefined ? tagCounts[tag] : '?';
-        // Check for similarity hint
-        const match = tagMatches.find(m => m.suggested === tag && m.action === 'confirm' && m.matched);
-        let hint = '';
-        if (match) {
-            const pct = Math.round(match.similarity * 100);
-            hint = `<span class="similarity-hint">~${match.matched} (${pct}%)</span>`;
-        }
-        chip.innerHTML = `${tag} <span class="text-indigo-400 text-xs">(${count})</span>${hint}<span class="tag-chip-remove" onclick="removePreviewTag('${tag.replace(/'/g, "\\'")}')">&times;</span>`;
-        previewTagsContainer.appendChild(chip);
-    });
+function replaceInSet(set, oldVal, newVal) {
+    // Replace a value in a Set maintaining iteration order
+    if (!set.has(oldVal)) return false;
+    const arr = [...set];
+    arr[arr.indexOf(oldVal)] = newVal;
+    set.clear();
+    arr.forEach(v => set.add(v));
+    return true;
 }
+
+function swapTag(oldTag, newTag) {
+    newTag = newTag.toLowerCase();
+    // Replace in-place to maintain tag order
+    replaceInSet(llmTags, oldTag, newTag) ||
+    replaceInSet(detectedTags, oldTag, newTag) ||
+    replaceInSet(userTags, oldTag, newTag);
+
+    // Update tagMatches so the new tag inherits the candidates dropdown.
+    // Add the old tag to candidates so user can revert.
+    const matchIdx = tagMatches.findIndex(m => m.suggested === oldTag || m.matched === oldTag);
+    if (matchIdx >= 0) {
+        const match = {...tagMatches[matchIdx]};
+        const oldSuggested = match.suggested;
+        match.suggested = newTag;
+        match.matched = newTag;
+        // Ensure old tag is available as a candidate for reverting
+        if (match.candidates && !match.candidates.some(c => c.name === oldSuggested)) {
+            match.candidates = [{name: oldSuggested, similarity: match.similarity}, ...match.candidates];
+        }
+        tagMatches[matchIdx] = match;
+    }
+    document.querySelectorAll('.candidates-dropdown').forEach(d => d.remove());
+    renderAll();
+}
+
+// Close dropdowns on outside click
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.candidates-trigger') && !e.target.closest('.candidates-dropdown')) {
+        document.querySelectorAll('.candidates-dropdown').forEach(d => d.remove());
+    }
+    if (!e.target.closest('#preview-tags-input') && !e.target.closest('#tag-autocomplete-dropdown')) {
+        autocompleteDropdown.classList.add('hidden');
+    }
+});
+
+// === Tag input: Enter + typeahead ===
 
 previewTagsInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
         e.preventDefault();
-        addPreviewTag(previewTagsInput.value);
-        previewTagsInput.value = '';
+        const val = previewTagsInput.value.trim();
+        if (val) {
+            addPreviewTag(val);
+            previewTagsInput.value = '';
+            autocompleteDropdown.classList.add('hidden');
+        }
     }
 });
 
-// Rating widget handler
+previewTagsInput.addEventListener('input', () => {
+    const query = previewTagsInput.value.trim();
+    if (query.length < 2) {
+        autocompleteDropdown.classList.add('hidden');
+        return;
+    }
+    clearTimeout(autocompleteTimeout);
+    autocompleteTimeout = setTimeout(async () => {
+        try {
+            const resp = await fetch(`/api/v1/tags/autocomplete?prefix=&q=${encodeURIComponent(query)}&limit=10`);
+            const data = await resp.json();
+            const allCurrent = new Set([...userTags, ...llmTags, ...detectedTags]);
+            const filtered = (data.tags || []).filter(t => !allCurrent.has(t));
+            if (filtered.length > 0) {
+                autocompleteDropdown.innerHTML = filtered.map(t =>
+                    `<div class="tag-autocomplete-item" onclick="selectAutocompleteTag('${esc(t)}')">${t}</div>`
+                ).join('');
+                autocompleteDropdown.classList.remove('hidden');
+            } else {
+                autocompleteDropdown.classList.add('hidden');
+            }
+        } catch (err) {
+            autocompleteDropdown.classList.add('hidden');
+        }
+    }, 300);
+});
+
+function selectAutocompleteTag(tagName) {
+    addPreviewTag(tagName);
+    previewTagsInput.value = '';
+    autocompleteDropdown.classList.add('hidden');
+}
+
+// === Rating ===
+
 document.getElementById('rating-widget').addEventListener('click', (e) => {
     const btn = e.target.closest('.rating-btn');
     if (!btn) return;
-    const rating = parseInt(btn.dataset.rating, 10);
-    selectedRating = rating;
+    selectedRating = parseInt(btn.dataset.rating, 10);
     document.querySelectorAll('#rating-widget .rating-btn').forEach(b => b.classList.remove('active'));
-    if (rating > 0) {
-        btn.classList.add('active');
-    }
+    if (selectedRating > 0) btn.classList.add('active');
 });
 
-// Back button: return to URL entry
+// === Prefix inputs ===
+
+function renderPrefixInputs() {
+    const container = document.getElementById('prefix-tags-inputs');
+    container.innerHTML = tagPrefixes.map(prefix => {
+        const label = prefix.replace(/:$/, '');
+        // Auto-fill author from metadata if available
+        const prefillValue = (label === 'author' && window._detectedAuthor) ? window._detectedAuthor : '';
+        return `<div class="flex items-center gap-2 mb-2">
+            <span class="text-sm font-medium text-gray-700 w-24">${prefix}</span>
+            <input type="text" data-prefix="${prefix}"
+                   value="${prefillValue}"
+                   placeholder="e.g. ${label === 'reference' ? 'peter-zeihan' : label === 'author' ? 'jane-smith' : 'value'} (use , or ; for multiple)"
+                   class="prefix-tag-input flex-1 rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-2">
+        </div>`;
+    }).join('');
+}
+
+// === Back ===
 backBtn.addEventListener('click', () => {
     previewUI.classList.add('hidden');
     urlForm.classList.remove('hidden');
     statusMessage.classList.add('hidden');
 });
 
-// Phase 2: Confirm & Submit
+// === Confirm & Submit ===
+
 confirmBtn.addEventListener('click', async () => {
     const title = document.getElementById('preview-title').value.trim();
     const description = document.getElementById('preview-description').value.trim();
-    const tags = Array.from(previewTagsSet);
     const shared = document.getElementById('preview-shared').checked;
 
-    // Add rating tag if selected
-    if (selectedRating > 0) {
-        tags.push(`rating=${selectedRating}_10`);
-    }
+    // Collect all active tags from all three sets
+    const tags = [...userTags, ...llmTags, ...detectedTags];
 
-    // Add prefix tags
+    if (selectedRating > 0) tags.push(`rating=${selectedRating}_10`);
+
     document.querySelectorAll('.prefix-tag-input').forEach(input => {
-        const value = input.value.trim();
-        if (value) {
-            const prefix = input.dataset.prefix;
-            // If user already typed the prefix, use as-is; otherwise prepend
-            const tag = value.startsWith(prefix) ? value : prefix + value;
-            tags.push(tag);
-        }
+        const rawValue = input.value.trim();
+        if (!rawValue) return;
+        const prefix = input.dataset.prefix;
+        rawValue.split(/[,;]/).map(v => v.trim()).filter(v => v).forEach(v => {
+            tags.push(v.startsWith(prefix) ? v : prefix + v);
+        });
     });
 
     if (!title) {
@@ -626,27 +710,14 @@ confirmBtn.addEventListener('click', async () => {
         const response = await fetch('/api/v1/bookmarks/submit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                url: preparedUrl,
-                title,
-                description: description || null,
-                tags,
-                shared
-            })
+            body: JSON.stringify({ url: preparedUrl, title, description: description || null, tags, shared })
         });
-
         const data = await response.json();
-
         if (response.ok) {
-            showStatus('success', 'Bookmark Added',
-                `Bookmark saved with ID: ${data.display_id}`);
-
-            setTimeout(() => {
-                window.location.href = '/';
-            }, 2000);
+            showStatus('success', 'Bookmark Added', `Bookmark saved with ID: ${data.display_id}`);
+            setTimeout(() => { window.location.href = '/'; }, 2000);
         } else {
-            const errorMsg = data.detail?.detail || data.detail || 'Failed to submit bookmark';
-            showStatus('error', 'Error', errorMsg);
+            showStatus('error', 'Error', data.detail?.detail || data.detail || 'Failed to submit');
         }
     } catch (error) {
         showStatus('error', 'Network Error', 'Failed to connect to server');
@@ -656,70 +727,40 @@ confirmBtn.addEventListener('click', async () => {
     }
 });
 
-// Show conflict UI
+// === Conflict UI ===
+
 let conflictData = null;
 
 function showConflictUI(data) {
     conflictData = data;
-
-    // Hide URL form, show conflict UI
     urlForm.classList.add('hidden');
     document.getElementById('conflict-ui').classList.remove('hidden');
-
-    // Populate existing bookmark
     document.getElementById('conflict-existing-title').textContent = data.conflict.existing.title || '(no title)';
     document.getElementById('conflict-existing-description').textContent = data.conflict.existing.description || '(no description)';
-    const existingTagsEl = document.getElementById('conflict-existing-tags');
-    existingTagsEl.innerHTML = data.conflict.existing.tags.map(t =>
-        `<span class="tag-chip">${t}</span>`
-    ).join('');
-
-    // Populate new bookmark
+    document.getElementById('conflict-existing-tags').innerHTML = data.conflict.existing.tags.map(t => `<span class="tag-chip">${t}</span>`).join('');
     document.getElementById('conflict-new-title').textContent = data.conflict.new.title || '(no title)';
     document.getElementById('conflict-new-description').textContent = data.conflict.new.description || '(no description)';
-    const newTagsEl = document.getElementById('conflict-new-tags');
-    newTagsEl.innerHTML = data.conflict.new.tags.map(t =>
-        `<span class="tag-chip">${t}</span>`
-    ).join('');
-
-    showStatus('warning', 'Conflict Detected',
-        'This bookmark already exists. Please choose how to resolve the conflict.');
+    document.getElementById('conflict-new-tags').innerHTML = data.conflict.new.tags.map(t => `<span class="tag-chip">${t}</span>`).join('');
+    showStatus('warning', 'Conflict Detected', 'This bookmark already exists. Choose how to resolve.');
 }
 
-// Conflict resolution
 document.getElementById('conflict-resolve-btn').addEventListener('click', async () => {
     const resolution = document.querySelector('input[name="resolution"]:checked').value;
     const resolveBtn = document.getElementById('conflict-resolve-btn');
-
     resolveBtn.disabled = true;
     resolveBtn.textContent = 'Resolving...';
-
     try {
         const response = await fetch('/api/v1/bookmarks/resolve', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                url: conflictData.url,
-                resolution: resolution,
-                title: conflictData.conflict.new.title,
-                description: conflictData.conflict.new.description,
-                tags: conflictData.conflict.new.tags,
-                shared: true
-            })
+            body: JSON.stringify({ url: conflictData.url, resolution, title: conflictData.conflict.new.title, description: conflictData.conflict.new.description, tags: conflictData.conflict.new.tags, shared: true })
         });
-
         const data = await response.json();
-
         if (response.ok) {
-            showStatus('success', 'Conflict Resolved',
-                `Bookmark updated with ID: ${data.display_id}`);
-
-            setTimeout(() => {
-                window.location.href = '/';
-            }, 2000);
+            showStatus('success', 'Conflict Resolved', `Bookmark updated with ID: ${data.display_id}`);
+            setTimeout(() => { window.location.href = '/'; }, 2000);
         } else {
-            const errorMsg = data.detail?.detail || data.detail || 'Failed to resolve conflict';
-            showStatus('error', 'Error', errorMsg);
+            showStatus('error', 'Error', data.detail?.detail || data.detail || 'Failed to resolve');
         }
     } catch (error) {
         showStatus('error', 'Network Error', 'Failed to connect to server');
@@ -729,33 +770,26 @@ document.getElementById('conflict-resolve-btn').addEventListener('click', async 
     }
 });
 
-// Cancel conflict resolution
 document.getElementById('conflict-cancel-btn').addEventListener('click', () => {
     document.getElementById('conflict-ui').classList.add('hidden');
     urlForm.classList.remove('hidden');
     conflictData = null;
 });
 
-// Status message helper
-function showStatus(type, title, message) {
-    const statusEl = statusMessage;
-    statusEl.classList.remove('hidden', 'bg-green-50', 'bg-red-50', 'bg-yellow-50',
-        'border-green-200', 'border-red-200', 'border-yellow-200');
+// === Status helper ===
 
+function showStatus(type, title, message) {
     const colors = {
         success: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-800', icon: 'text-green-400' },
         error: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-800', icon: 'text-red-400' },
         warning: { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-800', icon: 'text-yellow-400' }
     };
-
     const color = colors[type];
-    statusEl.className = `mb-4 rounded-md p-4 border ${color.bg} ${color.border}`;
-
+    statusMessage.className = `mb-4 rounded-md p-4 border ${color.bg} ${color.border}`;
     const iconPath = type === 'success'
         ? 'M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z'
         : 'M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z';
-
-    statusEl.innerHTML = `
+    statusMessage.innerHTML = `
         <div class="flex">
             <svg class="h-5 w-5 ${color.icon}" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="${iconPath}" clip-rule="evenodd" />
@@ -764,8 +798,7 @@ function showStatus(type, title, message) {
                 <h3 class="text-sm font-medium ${color.text}">${title}</h3>
                 <p class="mt-1 text-sm ${color.text}">${message}</p>
             </div>
-        </div>
-    `;
+        </div>`;
 }
 </script>
 {% endblock %}

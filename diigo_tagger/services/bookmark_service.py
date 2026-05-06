@@ -266,6 +266,10 @@ class BookmarkService:
         display_id = Bookmark.generate_display_id(url)
         existing_bookmark = self.session.query(Bookmark).filter_by(url=url).first()
 
+        # Fetch webpage/video metadata (always, even for existing bookmarks —
+        # needed for author extraction and detected tags)
+        metadata = self.metadata_fetcher.fetch_metadata(url)
+
         # If bookmark exists and user didn't provide any overrides, return early
         if existing_bookmark and not (title or description or tags):
             existing_tags = [tag.name for tag in existing_bookmark.tags]
@@ -288,10 +292,10 @@ class BookmarkService:
                 "display_id": existing_bookmark.display_id,
                 "detected_tags": [],
                 "tag_matches": [],
+                "author": metadata.get("author", ""),
             }
 
-        # Fetch webpage/video metadata
-        metadata = self.metadata_fetcher.fetch_metadata(url)
+        # Use already-fetched metadata
         fetched_title = metadata.get('title', '')
         fetched_description = metadata.get('description', '')
         fetched_keywords = metadata.get('keywords', [])
@@ -348,27 +352,28 @@ class BookmarkService:
                 # Gracefully handle missing tag data (e.g. empty database)
                 pass
 
-        # Combine user tags and LLM tags (applying reconciliation)
+        # User tags + LLM tags (with reconciliation) + detected tags all auto-added.
+        # UI shows them in labeled sections so user can remove unwanted ones.
         final_tags = list(tags) if tags else []
         if llm_tags and tag_matches:
             for match in tag_matches:
-                if match["action"] == "auto_accept" and match["matched"]:
-                    final_tags.append(match["matched"])
-                else:
-                    final_tags.append(match["suggested"])
+                tag_name = match["matched"] if match["action"] == "auto_accept" and match["matched"] else match["suggested"]
+                if tag_name not in final_tags:
+                    final_tags.append(tag_name)
         elif llm_tags:
-            final_tags.extend(llm_tags)
+            for t in llm_tags:
+                if t not in final_tags:
+                    final_tags.append(t)
 
-        # Include detected tag names in final tags
+        # Include detected tag names
         detected_tag_names = [dt["tag"] for dt in detected_tags]
         for tag_name in detected_tag_names:
             if tag_name not in final_tags:
                 final_tags.append(tag_name)
 
-        # Look up usage counts for user + LLM tags (skip detected prefix tags)
-        all_tag_names = list(set(
-            [t for t in final_tags if t not in detected_tag_names] + llm_tags
-        ))
+        # Look up usage counts for all tags (user + LLM + detected)
+        detected_tag_names = [dt["tag"] for dt in detected_tags]
+        all_tag_names = list(set(final_tags + llm_tags + detected_tag_names))
         tag_counts = self._get_tag_counts(all_tag_names)
 
         # Build result
@@ -388,6 +393,7 @@ class BookmarkService:
             "display_id": display_id,
             "detected_tags": detected_tags,
             "tag_matches": tag_matches,
+            "author": metadata.get("author", ""),
         }
 
         # If bookmark exists, include conflict info

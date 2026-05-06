@@ -156,6 +156,36 @@ class MetadataFetcher:
                 "error": str(e)
             }
 
+    @staticmethod
+    def _author_from_url_path(url: str) -> str:
+        """Extract author/publication from the first URL path segment.
+
+        Useful as a fallback when metadata fetch fails (e.g., Medium 403).
+        Handles Medium-style URLs: medium.com/@user/..., medium.com/publication/...
+
+        Args:
+            url: Full URL to extract author from.
+
+        Returns:
+            Cleaned author string, or empty string if no meaningful segment.
+        """
+        parsed = urlparse(url)
+        path = parsed.path.strip("/")
+        if not path:
+            return ""
+
+        # First path segment is typically the author/publication
+        segment = path.split("/")[0]
+        if not segment:
+            return ""
+
+        # Strip @ prefix (Medium user URLs)
+        segment = segment.lstrip("@")
+
+        # Replace hyphens/underscores with spaces, capitalize
+        words = segment.replace("-", " ").replace("_", " ").split()
+        return " ".join(w.capitalize() for w in words)
+
     def _title_from_url_path(self, url: str) -> str:
         """Extract a human-readable title from the URL path slug.
 
@@ -210,6 +240,7 @@ class MetadataFetcher:
                 "keywords": [],
                 "content_type": "webpage",
                 "has_article_tag": False,
+                "author": "",
                 "error": "requests or beautifulsoup4 not installed"
             }
 
@@ -281,12 +312,43 @@ class MetadataFetcher:
             # Detect <article> element for format:article tagging
             has_article_tag = soup.find('article') is not None
 
+            # Extract author from meta tags
+            author = ""
+            # Try og:article:author, then author meta, then dc.creator
+            for attr in [
+                {'property': 'article:author'},
+                {'property': 'og:article:author'},
+                {'name': 'author'},
+                {'name': 'dc.creator'},
+            ]:
+                meta_author = soup.find('meta', attrs=attr)
+                if meta_author and meta_author.get('content'):
+                    author = meta_author['content'].strip()
+                    break
+            # Fallback: check for <a rel="author"> or class="author"
+            if not author:
+                author_link = soup.find('a', attrs={'rel': 'author'})
+                if author_link and author_link.get_text(strip=True):
+                    author = author_link.get_text(strip=True)
+            if not author:
+                try:
+                    author_el = soup.select_one('[class*="author"]')
+                    if author_el and author_el.get_text(strip=True):
+                        author = author_el.get_text(strip=True)
+                except Exception:
+                    pass
+
+            # Last resort: extract from URL path
+            if not author:
+                author = self._author_from_url_path(url)
+
             return {
                 "title": title,
                 "description": description,
                 "keywords": [k for k in keywords if k],  # Filter empty
                 "content_type": "webpage",
-                "has_article_tag": has_article_tag
+                "has_article_tag": has_article_tag,
+                "author": author,
             }
 
         except Exception as e:
@@ -297,5 +359,6 @@ class MetadataFetcher:
                 "keywords": [],
                 "content_type": "webpage",
                 "has_article_tag": False,
+                "author": self._author_from_url_path(url),
                 "error": str(e)
             }
