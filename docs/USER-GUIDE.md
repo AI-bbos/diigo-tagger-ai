@@ -1,5 +1,33 @@
 # User Guide
 
+## Features at a Glance
+
+| Feature | Description |
+|---------|-------------|
+| **AI-Powered Tagging** | LLM generates 8 content tags per bookmark using OpenAI, Anthropic, or Google |
+| **Smart Tag Matching** | Suggested tags checked against your existing tags — duplicates auto-merged, similar tags shown with alternatives |
+| **Metadata Detection** | Auto-detects `source:medium.com`, `format:video`, `format:pdf`, `format:repository`, `format:article` |
+| **Category Inference** | Clusters content tags and suggests broader parent categories (e.g., "software-development") |
+| **Related Bookmarks** | Shows existing bookmarks with matching URL paths — click to inherit their tags |
+| **Rating System** | Rate bookmarks 1-10 with one click, stored as `rating=7_10` tag |
+| **Prefix Tags** | `author:` and `reference:` prefix tags with autocomplete from existing values |
+| **Tag Similarity** | Dropdown showing alternative existing tags ranked by usage count and similarity % |
+| **Preview & Confirm** | Review title, description, and all tags before submitting to Diigo |
+| **Conflict Resolution** | Side-by-side comparison when bookmark exists, with keep/replace/merge options |
+| **Lucene Search** | Full-text search with boolean operators, wildcards, phrases, and field filtering |
+| **Multi-Provider LLM** | Automatic fallback between OpenAI, Anthropic, and Google providers |
+| **Diigo Sync** | Import bookmarks from Diigo with progress tracking |
+
+### Suggested Screenshots
+
+<!-- TODO: Add screenshots -->
+<!-- 1. Web UI preview page showing all sections: AI tags, detected tags, categories, related bookmarks, rating, prefix inputs -->
+<!-- 2. Tag similarity dropdown showing ranked alternatives with counts -->
+<!-- 3. Related bookmarks section with clickable tags from matching URL paths -->
+<!-- 4. Conflict resolution side-by-side comparison -->
+<!-- 5. Search results page with Lucene query -->
+<!-- 6. Bookmark list homepage with tag chips -->
+
 ## Installation
 
 ### Prerequisites
@@ -75,7 +103,61 @@ diigo dev --port 3000
 
 The server runs with auto-reload — code changes take effect immediately.
 
-### Browsing bookmarks
+### Adding Bookmarks (Web UI)
+
+The bookmark add flow is a two-phase process: **Preview** then **Confirm**.
+
+#### Phase 1: Enter URL
+
+Click "Add Bookmark" and enter a URL. Click **Preview** to fetch metadata and generate tags.
+
+#### Phase 2: Review & Edit
+
+The preview shows everything that will be submitted, organized in sections:
+
+**Title & Description** — Auto-fetched from the page metadata. Editable. Falls back to URL path slug if the site blocks metadata fetching (e.g., Medium).
+
+**Tags (manual)** — Type to search existing tags with typeahead autocomplete, or press Enter to create new tags. Usage counts shown on each tag.
+
+**AI-generated tags** (green section) — LLM-suggested tags, already added. Each shows:
+- Usage count: how many bookmarks already use this tag
+- Similarity %: how closely it matched an existing tag
+- Dropdown (click %): ranked alternatives from your existing tags, sorted by usage count
+
+Click × to remove. Removed tags move to a "Removed suggestions" section where you can re-add them.
+
+**Detected metadata tags** (blue section) — Auto-detected from the URL:
+- `source:medium.com` — extracted from the domain
+- `format:video` — YouTube, Vimeo, etc.
+- `format:pdf` — PDF links
+- `format:repository` — GitHub/GitLab repos
+- `format:article` — pages with `<article>` HTML element
+
+Click × to remove.
+
+**Suggested categories** (amber section) — Broader parent categories inferred by clustering the content tags:
+- e.g., tags [java, spring-boot, api] → category **software-development**
+- Shows which content tags each category covers
+- Dropdown with alternative existing tags ranked by count
+- Click + to add
+
+**Related bookmarks** (purple section) — Existing bookmarks with matching URL paths. Shows their tags as clickable chips — click to inherit a tag from a related bookmark.
+
+**Rating** — Click 1-10 or Skip. Stored as `rating=7_10` tag.
+
+**Prefix tags** — `author:` and `reference:` fields. Enter just the value (prefix auto-prepended). Use `,` or `;` for multiple entries. Author auto-populated from page metadata when available.
+
+Click **Confirm & Submit** to save to both the local database and Diigo.
+
+#### Conflict Resolution
+
+If the bookmark URL already exists, a side-by-side comparison shows current vs. new data with resolution options:
+- **Keep Original** — discard new data
+- **Replace All** — overwrite with new data
+- **Smart Merge** — keep original where new is empty, combine tags
+- **Update Title & Description, Merge Tags** — replace text, combine tags
+
+### Browsing Bookmarks
 
 The homepage shows all bookmarks with pagination. Use the search bar with Lucene query syntax:
 
@@ -89,18 +171,6 @@ title:*neural*                        # Wildcard
 title:"machine learning"              # Exact phrase
 (title:python OR title:js) AND tags:tutorial  # Grouping
 ```
-
-### Adding bookmarks
-
-Click "Add Bookmark" on the bookmarks page. The form:
-
-1. Enter a URL — metadata (title, description) is fetched automatically
-2. Edit title and description if needed
-3. Click "Suggest Tags" for LLM-generated tag suggestions
-4. Add or remove tags manually
-5. Submit
-
-If the URL already exists, you'll see a conflict resolution dialog with options to keep the original, replace with new data, smart merge, or customize per field.
 
 ### Syncing from Diigo
 
@@ -116,15 +186,18 @@ Progress updates stream in real time.
 
 ### Bookmark Management
 
-**`diigo add --url URL`** — Add a bookmark with LLM-powered tagging.
+**`diigo add --url URL`** — Add a bookmark with AI-powered tagging.
+
+Shows a preview of the resolved title, description, and tags before submitting. Use `--yes` to skip confirmation (for scripting).
 
 ```bash
 diigo add --url https://example.com/article
 diigo add --url https://example.com --title "My Title" --tags "python,web"
 diigo add --url https://example.com --private  # Private bookmark
+diigo add --url https://example.com --yes      # Skip confirmation
 ```
 
-Options: `--title`, `--description`, `--tags` (comma-separated), `--outline`, `--groups`, `--shared/--private`
+Options: `--title`, `--description`, `--tags` (comma-separated), `--outline`, `--groups`, `--shared/--private`, `--yes/-y`
 
 **`diigo sync`** — Import bookmarks from Diigo.
 
