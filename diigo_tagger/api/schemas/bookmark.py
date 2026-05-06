@@ -102,6 +102,7 @@ class PrepareBookmarkResponse(BaseModel):
     detected_tags: List[dict] = Field(default_factory=list, description="Metadata-detected tags [{tag, type}]")
     tag_matches: List[dict] = Field(default_factory=list, description="Tag similarity matches [{suggested, matched, similarity, candidates, action}]")
     author: str = Field("", description="Author extracted from page metadata")
+    parent_categories: List[dict] = Field(default_factory=list, description="Suggested parent category tags [{tag, original_suggestion, cluster, matched_existing, similarity, is_new}]")
 
 
 class SubmitBookmarkRequest(BaseModel):
