@@ -3,11 +3,12 @@
 ## 1. License & Open Source
 
 ### Tasks
-- [ ] Add `LICENSE` file with AGPL-3.0 text
-- [ ] Add license header reference to `pyproject.toml` (`license = "AGPL-3.0-or-later"`)
-- [ ] Audit repo for secrets/credentials (ensure `.env` is gitignored, no hardcoded keys)
-- [ ] Review commit history for any accidentally committed secrets
-- [ ] Update README.md with license badge and "what is this" summary for public audience
+- [x] Add `LICENSE` file with AGPL-3.0 text
+- [x] Add license header reference to `pyproject.toml` (`license = "AGPL-3.0-or-later"`)
+- [x] Audit repo for secrets/credentials (ensure `.env` is gitignored, no hardcoded keys)
+- [x] Review commit history for any accidentally committed secrets
+- [x] Update README.md with license badge and "what is this" summary for public audience
+- [x] Audit all 31 direct dependencies against PyPI + blocklist (all clean)
 - [ ] Make repo public on GitHub
 
 ### Why AGPL-3.0
