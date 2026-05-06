@@ -653,12 +653,17 @@ previewTagsInput.addEventListener('input', () => {
         try {
             const resp = await fetch(`/api/v1/tags/autocomplete?prefix=&q=${encodeURIComponent(query)}&limit=10`);
             const data = await resp.json();
+            // Merge counts from autocomplete response
+            if (data.tag_counts) {
+                Object.assign(tagCounts, data.tag_counts);
+            }
             const allCurrent = new Set([...userTags, ...llmTags, ...detectedTags]);
             const filtered = (data.tags || []).filter(t => !allCurrent.has(t));
             if (filtered.length > 0) {
-                autocompleteDropdown.innerHTML = filtered.map(t =>
-                    `<div class="tag-autocomplete-item" onclick="selectAutocompleteTag('${esc(t)}')">${t}</div>`
-                ).join('');
+                autocompleteDropdown.innerHTML = filtered.map(t => {
+                    const count = tagCounts[t] !== undefined ? tagCounts[t] : 0;
+                    return `<div class="tag-autocomplete-item" onclick="selectAutocompleteTag('${esc(t)}')">${t} (${count})</div>`;
+                }).join('');
                 autocompleteDropdown.classList.remove('hidden');
             } else {
                 autocompleteDropdown.classList.add('hidden');

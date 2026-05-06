@@ -374,6 +374,9 @@ async def tag_autocomplete(
         A dict with ``tags`` (list of matching tag names) and ``prefix``
         (the prefix used for the query).
     """
+    from sqlalchemy import func
+    from ...models import bookmark_tags
+
     session = get_session()
 
     try:
@@ -384,7 +387,18 @@ async def tag_autocomplete(
             .limit(limit)
             .all()
         )
-        return {"tags": [tag.name for tag in tags], "prefix": prefix}
+        # Include bookmark count per tag
+        tag_counts = {}
+        for tag in tags:
+            count = (
+                session.query(func.count())
+                .select_from(bookmark_tags)
+                .filter(bookmark_tags.c.tag_id == tag.id)
+                .scalar()
+            )
+            tag_counts[tag.name] = count
+
+        return {"tags": [tag.name for tag in tags], "tag_counts": tag_counts, "prefix": prefix}
 
     finally:
         session.close()
