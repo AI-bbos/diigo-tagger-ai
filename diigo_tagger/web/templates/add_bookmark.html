@@ -227,7 +227,6 @@
 
                     <div class="flex items-center justify-end space-x-4">
                         <button type="button" id="back-btn" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Back</button>
-                        <button type="button" id="retag-btn" class="hidden px-4 py-2 border border-indigo-300 rounded-md shadow-sm text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100">Re-tag with AI</button>
                         <button type="button" id="confirm-btn" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">Confirm & Submit</button>
                     </div>
                 </div>
@@ -324,9 +323,13 @@ urlForm.addEventListener('submit', async (e) => {
 
         if (data.conflict && data.conflict.no_changes) {
             showStatus('warning', 'Bookmark Exists',
-                'This bookmark is in the Diigo Tagger database but may not be in Diigo. Click Confirm & Submit to ensure it is saved to Diigo, or Re-tag to run AI tagging on this bookmark.');
+                'This bookmark is in the Diigo Tagger database but may not be in Diigo. Click Confirm & Submit to ensure it is saved to Diigo.');
             window._retagUrl = url;
-            document.getElementById('retag-btn').classList.remove('hidden');
+            // Inject retag button into the status banner
+            const statusEl = document.getElementById('status-message');
+            const btnHtml = '<div class="mt-3 text-center"><button type="button" id="retag-inline-btn" class="px-4 py-2 border border-amber-400 rounded-md shadow-sm text-sm font-medium text-amber-800 bg-amber-100 hover:bg-amber-200">Re-tag with AI</button></div>';
+            statusEl.innerHTML += btnHtml;
+            document.getElementById('retag-inline-btn').addEventListener('click', () => doRetag());
         }
         if (data.conflict && data.conflict.existing && data.conflict.new) {
             showConflictUI(data);
@@ -811,17 +814,18 @@ backBtn.addEventListener('click', () => {
     previewUI.classList.add('hidden');
     urlForm.classList.remove('hidden');
     statusMessage.classList.add('hidden');
-    document.getElementById('retag-btn').classList.add('hidden');
 });
 
 // === Re-tag with AI ===
-document.getElementById('retag-btn').addEventListener('click', async () => {
-    const retagBtn = document.getElementById('retag-btn');
+async function doRetag() {
     const url = window._retagUrl || preparedUrl;
     if (!url) return;
 
-    retagBtn.disabled = true;
-    retagBtn.textContent = 'Re-tagging...';
+    const btn = document.getElementById('retag-inline-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Re-tagging...';
+    }
 
     try {
         const response = await fetch('/api/v1/bookmarks/prepare', {
@@ -837,16 +841,17 @@ document.getElementById('retag-btn').addEventListener('click', async () => {
         }
 
         preparedUrl = data.url;
-        retagBtn.classList.add('hidden');
         showStatus('success', 'Re-tagged', 'AI tagging complete — review the suggestions below.');
         showPreview(data);
     } catch (error) {
         showStatus('error', 'Network Error', 'Failed to connect to server');
     } finally {
-        retagBtn.disabled = false;
-        retagBtn.textContent = 'Re-tag with AI';
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Re-tag with AI';
+        }
     }
-});
+}
 
 // === Confirm & Submit ===
 
