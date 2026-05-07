@@ -1,5 +1,15 @@
 # Developer Guide
 
+## Architecture Philosophy
+
+This is a **local-first** application. The web UI runs on `localhost`, the database is a local SQLite file, and no data leaves the user's machine except explicit API calls to Diigo and their chosen LLM provider. There is no server-side hosting, no user accounts, no cloud database.
+
+This architecture was a deliberate choice:
+- **SQLite over PostgreSQL** — zero config, single file, no database server to manage
+- **Local web server over SaaS** — user owns their data, no subscription model
+- **API keys in `.env`** — user provides their own LLM keys, no proxy or shared quota
+- **Designed for self-hosting** — install from git, run locally, works on any machine with Python 3.10+
+
 ## Setup
 
 ### Prerequisites
