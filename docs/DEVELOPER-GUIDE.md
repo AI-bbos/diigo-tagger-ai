@@ -9,6 +9,9 @@ This architecture was a deliberate choice:
 - **Local web server over SaaS** — user owns their data, no subscription model
 - **API keys in `.env`** — user provides their own LLM keys, no proxy or shared quota
 - **Designed for self-hosting** — install from git, run locally, works on any machine with Python 3.10+
+- **Serverless by default** — no background processes, daemons, or persistent server required. The web UI runs on-demand via `diigo dev` and stops when you're done.
+
+**Cloud-ready:** There is no reason this couldn't be modified to run as a cloud service. The architecture uses standard FastAPI + SQLAlchemy, so swapping SQLite for a cloud database (e.g., Turso, PostgreSQL, PlanetScale) and deploying to a platform like Vercel, Fly.io, or Railway would be straightforward. The Vercel scaffolding (`diigo build`) is already in place. The main considerations would be adding user authentication and migrating from file-based SQLite to a hosted database.
 
 ## Setup
 
