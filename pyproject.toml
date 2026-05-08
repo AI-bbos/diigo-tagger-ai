@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "diigo-tagger-ai"
-version = "1.0.0"
+version = "1.1.0"
 description = "AI-powered bookmark management for Diigo — smart tagging, similarity matching, and category inference"
 authors = ["Brooke Smith <2556595+oehm-smith@users.noreply.github.com>"]
 license = "AGPL-3.0-or-later"
