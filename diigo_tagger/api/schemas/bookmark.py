@@ -44,6 +44,7 @@ class AddBookmarkRequest(BaseModel):
     description: Optional[str] = Field(None, description="Optional description (auto-fetched if not provided)")
     tags: Optional[List[str]] = Field(None, description="Optional tags (LLM-suggested if not provided)")
     shared: bool = Field(True, description="Whether bookmark is public (default: True)")
+    force_retag: bool = Field(False, description="Force re-tagging of existing bookmark with AI")
 
 
 class LLMSuggestions(BaseModel):

@@ -1,5 +1,18 @@
 # User Guide
 
+## Why Local?
+
+Diigo Tagger AI runs entirely on your machine. The web UI at `localhost:8000` is a local server — not a cloud service. This means:
+
+- **Your data stays yours** — bookmarks, tags, and API keys never leave your computer
+- **No account or subscription for the tool itself** — install and run. You do need an API key for an LLM provider (OpenAI, Anthropic, or Google) for AI tagging, or you can run a local LLM (e.g., Ollama) for complete privacy and zero subscription cost
+- **No telemetry** — nothing is tracked or reported
+- **Works offline** — everything except LLM tag generation works without internet (and even that only sends the bookmark title/URL to your chosen LLM provider — or stays fully local with a local LLM)
+
+The only external calls are to the Diigo API (to sync/save bookmarks) and your configured LLM provider (to generate tags). Both use API keys you provide. For full privacy, a local LLM eliminates even these external calls for the tagging step.
+
+For easy installation and management of local web apps like this one, see [home-auto](https://github.com/AI-bbos/home-auto).
+
 ## Features at a Glance
 
 | Feature | Description |

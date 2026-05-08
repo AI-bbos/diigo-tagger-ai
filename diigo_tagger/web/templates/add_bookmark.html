@@ -322,7 +322,14 @@ urlForm.addEventListener('submit', async (e) => {
         }
 
         if (data.conflict && data.conflict.no_changes) {
-            showStatus('warning', 'Bookmark Exists', 'This bookmark is in the Diigo Tagger database but may not be in Diigo. Click Confirm & Submit to ensure it is saved to Diigo.');
+            showStatus('warning', 'Bookmark Exists',
+                'This bookmark is in the Diigo Tagger database but may not be in Diigo. Click Confirm & Submit to ensure it is saved to Diigo.');
+            window._retagUrl = url;
+            // Inject retag button into the status banner
+            const statusEl = document.getElementById('status-message');
+            const btnHtml = '<div class="mt-3 text-center"><button type="button" id="retag-inline-btn" class="px-4 py-2 border border-amber-400 rounded-md shadow-sm text-sm font-medium text-amber-800 bg-amber-100 hover:bg-amber-200">Re-tag with AI</button></div>';
+            statusEl.innerHTML += btnHtml;
+            document.getElementById('retag-inline-btn').addEventListener('click', () => doRetag());
         }
         if (data.conflict && data.conflict.existing && data.conflict.new) {
             showConflictUI(data);
@@ -808,6 +815,43 @@ backBtn.addEventListener('click', () => {
     urlForm.classList.remove('hidden');
     statusMessage.classList.add('hidden');
 });
+
+// === Re-tag with AI ===
+async function doRetag() {
+    const url = window._retagUrl || preparedUrl;
+    if (!url) return;
+
+    const btn = document.getElementById('retag-inline-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Re-tagging...';
+    }
+
+    try {
+        const response = await fetch('/api/v1/bookmarks/prepare', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, force_retag: true })
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            showStatus('error', 'Error', data.detail?.detail || data.detail || 'Failed to re-tag');
+            return;
+        }
+
+        preparedUrl = data.url;
+        showStatus('success', 'Re-tagged', 'AI tagging complete — review the suggestions below.');
+        showPreview(data);
+    } catch (error) {
+        showStatus('error', 'Network Error', 'Failed to connect to server');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Re-tag with AI';
+        }
+    }
+}
 
 // === Confirm & Submit ===
 
