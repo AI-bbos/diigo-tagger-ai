@@ -5,7 +5,7 @@
 
 AI-powered bookmark management for [Diigo](https://www.diigo.com). Smart tagging with similarity matching, metadata detection, category inference, and a web UI for reviewing everything before it hits your Diigo library.
 
-> **Local-first tool.** Runs on your machine — your bookmarks, tags, and API keys never leave your computer. The web UI is a local server (`localhost:8000`), not a cloud service. This is by design: your data stays yours, and there's no subscription, no account, no telemetry. Tools like [home-auto](https://github.com/AI-bbos/home-auto) are making it easy to install and manage local web apps directly from git repositories.
+> **Local-first tool.** Runs on your machine — your bookmarks, tags, and API keys never leave your computer. The web UI is a local server (`localhost:8000`), not a cloud service. This is by design: your data stays yours, no account, no telemetry. AI tagging requires an LLM API key (OpenAI, Anthropic, or Google), or use a local LLM like [Ollama](https://ollama.ai) for complete privacy and zero subscription cost. Tools like [home-auto](https://github.com/AI-bbos/home-auto) are making it easy to install and manage local web apps directly from git repositories.
 
 ## What It Does
 
