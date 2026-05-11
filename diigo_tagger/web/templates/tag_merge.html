@@ -106,6 +106,28 @@
             No similar tag pairs found at this threshold.
         </div>
     </div>
+
+    <!-- Skipped pairs -->
+    <div id="skipped-section" class="hidden bg-white rounded-lg shadow p-6 border border-gray-200 mt-8">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-gray-500">Previously Skipped <span id="skipped-count" class="text-sm font-normal">(0)</span></h2>
+            <button type="button" onclick="restoreSelected()" class="px-3 py-1.5 text-sm font-medium text-indigo-600 border border-indigo-300 rounded-md hover:bg-indigo-50">Restore Selected to Suggestions</button>
+        </div>
+        <div class="overflow-auto" style="max-height: 50vh;">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="sticky top-0 bg-white z-10">
+                    <tr>
+                        <th class="px-4 py-2 text-left"><input type="checkbox" id="select-all-skipped" class="h-4 w-4 text-indigo-600 border-gray-300 rounded"></th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Tag 1</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Tag 2</th>
+                        <th class="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Similarity</th>
+                    </tr>
+                </thead>
+                <tbody id="skipped-tbody" class="divide-y divide-gray-50">
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -321,17 +343,79 @@
         fillMerge(selected.dataset.other, selected.value);
     };
 
-    // When radio changes: enable checkbox for equal-count rows, uncheck on skip
+    // Skipped pairs state (in-memory only, lost on refresh)
+    const skippedPairs = [];
+
+    // When radio changes: enable checkbox for equal-count rows, move to skipped on skip
     window.onRadioChange = function(idx, wasEqual) {
         const cb = document.querySelector(`.suggestion-cb[data-idx="${idx}"]`);
         const selected = document.querySelector(`input[name="target-${idx}"]:checked`);
         if (wasEqual && cb) cb.disabled = false;
-        if (selected && selected.value === 'skip' && cb) {
-            cb.checked = false;
+        if (selected && selected.value === 'skip') {
+            // Move to skipped table
+            const row = cb ? cb.closest('tr') : null;
+            if (row) {
+                const tag1El = row.querySelectorAll('td')[1];
+                const tag2El = row.querySelectorAll('td')[2];
+                const simEl = row.querySelectorAll('td')[4];
+                skippedPairs.push({
+                    tag1: tag1El ? tag1El.textContent.trim() : '',
+                    tag2: tag2El ? tag2El.textContent.trim() : '',
+                    similarity: simEl ? simEl.textContent.trim() : '',
+                    idx: idx
+                });
+                row.remove();
+                renderSkipped();
+                updateBatchBars();
+                // Update total pairs count
+                const remaining = document.querySelectorAll('#suggestions-tbody tr').length;
+                document.getElementById('total-pairs').textContent = remaining;
+            }
         } else if (selected && selected.value !== 'skip' && cb && !cb.disabled) {
             cb.checked = true;
         }
         updateBatchBars();
+    };
+
+    function renderSkipped() {
+        const section = document.getElementById('skipped-section');
+        const tbody = document.getElementById('skipped-tbody');
+        const countEl = document.getElementById('skipped-count');
+
+        if (skippedPairs.length === 0) {
+            section.classList.add('hidden');
+            return;
+        }
+
+        section.classList.remove('hidden');
+        countEl.textContent = `(${skippedPairs.length})`;
+        tbody.innerHTML = skippedPairs.map((pair, i) =>
+            `<tr>
+                <td class="px-4 py-2"><input type="checkbox" class="skipped-cb h-4 w-4 text-indigo-600 border-gray-300 rounded" data-skipped-idx="${i}"></td>
+                <td class="px-4 py-2 text-sm text-gray-500">${pair.tag1}</td>
+                <td class="px-4 py-2 text-sm text-gray-500">${pair.tag2}</td>
+                <td class="px-4 py-2 text-sm text-gray-400 text-right">${pair.similarity}</td>
+            </tr>`
+        ).join('');
+    }
+
+    // Select all skipped
+    document.getElementById('select-all-skipped').addEventListener('change', function() {
+        document.querySelectorAll('.skipped-cb').forEach(cb => cb.checked = this.checked);
+    });
+
+    // Restore selected skipped pairs back to suggestions
+    window.restoreSelected = function() {
+        const checked = document.querySelectorAll('.skipped-cb:checked');
+        if (checked.length === 0) return;
+
+        // Collect indices to restore (reverse order to avoid index shifting)
+        const indices = Array.from(checked).map(cb => parseInt(cb.dataset.skippedIdx)).sort((a, b) => b - a);
+        indices.forEach(i => skippedPairs.splice(i, 1));
+
+        // Reload suggestions to get fresh rows
+        renderSkipped();
+        loadSuggestions();
     };
 
     // Skip all — select skip radio on every row
