@@ -352,24 +352,32 @@
         const selected = document.querySelector(`input[name="target-${idx}"]:checked`);
         if (wasEqual && cb) cb.disabled = false;
         if (selected && selected.value === 'skip') {
-            // Move to skipped table
+            // Animate then move to skipped table
             const row = cb ? cb.closest('tr') : null;
             if (row) {
                 const tag1El = row.querySelectorAll('td')[1];
                 const tag2El = row.querySelectorAll('td')[2];
                 const simEl = row.querySelectorAll('td')[4];
-                skippedPairs.push({
+                const pairData = {
                     tag1: tag1El ? tag1El.textContent.trim() : '',
                     tag2: tag2El ? tag2El.textContent.trim() : '',
                     similarity: simEl ? simEl.textContent.trim() : '',
                     idx: idx
-                });
-                row.remove();
-                renderSkipped();
-                updateBatchBars();
-                // Update total pairs count
-                const remaining = document.querySelectorAll('#suggestions-tbody tr').length;
-                document.getElementById('total-pairs').textContent = remaining;
+                };
+                // Visual: fade + slide down
+                row.style.transition = 'all 0.4s ease-out';
+                row.style.opacity = '0.3';
+                row.style.transform = 'translateY(20px)';
+                row.style.backgroundColor = '#fef3c7';
+                setTimeout(() => {
+                    skippedPairs.push(pairData);
+                    row.remove();
+                    renderSkipped();
+                    updateBatchBars();
+                    const remaining = document.querySelectorAll('#suggestions-tbody tr').length;
+                    document.getElementById('total-pairs').textContent = remaining;
+                }, 400);
+                return;
             }
         } else if (selected && selected.value !== 'skip' && cb && !cb.disabled) {
             cb.checked = true;
