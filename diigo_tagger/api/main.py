@@ -317,6 +317,15 @@ async def tags_page(request: Request):
         session.close()
 
 
+@app.get("/tags/suggestions", response_class=HTMLResponse)
+async def tag_suggestions_page(request: Request):
+    """AI-powered tag cleanup suggestions page."""
+    return templates.TemplateResponse(
+        "tag_suggestions.html",
+        {"request": request, "active_nav": "tags"}
+    )
+
+
 @app.get("/add", response_class=HTMLResponse)
 async def add_bookmark_page(request: Request):
     """Add bookmark page."""

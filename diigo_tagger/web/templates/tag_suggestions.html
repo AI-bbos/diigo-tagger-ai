@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+
+{% block title %}Tag Suggestions - Diigo Tagger{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-0">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">AI Tag Suggestions</h1>
+        <a href="/tags" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+            &larr; Back to Tags
+        </a>
+    </div>
+
+    <!-- Loading state -->
+    <div id="loading" class="text-center py-12">
+        <svg class="animate-spin h-8 w-8 text-indigo-600 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        <p class="text-gray-500">Analyzing your tag library...</p>
+    </div>
+
+    <!-- Content (hidden until loaded) -->
+    <div id="suggestions-content" class="hidden space-y-8">
+
+        <!-- Near Duplicates -->
+        <div class="bg-white rounded-lg shadow p-6 border border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-900 mb-2">Near Duplicates</h2>
+            <p class="text-sm text-gray-500 mb-4">Tags that look similar and may be candidates for merging.</p>
+            <div id="near-duplicates-empty" class="hidden text-sm text-green-700">No near-duplicate tags found.</div>
+            <div class="overflow-x-auto">
+                <table id="near-duplicates-table" class="min-w-full divide-y divide-gray-200 hidden">
+                    <thead>
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tag 1</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tag 2</th>
+                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Similarity</th>
+                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Count 1</th>
+                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Count 2</th>
+                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="near-duplicates-body" class="divide-y divide-gray-100"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Inconsistent Case -->
+        <div class="bg-white rounded-lg shadow p-6 border border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-900 mb-2">Inconsistent Case</h2>
+            <p class="text-sm text-gray-500 mb-4">Tags with multiple case variants that should be standardized.</p>
+            <div id="inconsistent-case-empty" class="hidden text-sm text-green-700">No inconsistent case variants found.</div>
+            <div id="inconsistent-case-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </div>
+
+        <!-- Orphaned Tags -->
+        <div class="bg-white rounded-lg shadow p-6 border border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-900 mb-2">Orphaned Tags</h2>
+            <p class="text-sm text-gray-500 mb-4">Tags with no associated bookmarks.</p>
+            <div id="orphaned-tags-empty" class="hidden text-sm text-green-700">No orphaned tags found.</div>
+            <div id="orphaned-tags-list" class="flex flex-wrap gap-2"></div>
+        </div>
+
+        <!-- Single-Use Tags -->
+        <div class="bg-white rounded-lg shadow p-6 border border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-900 mb-2">Single-Use Tags</h2>
+            <p class="text-sm text-gray-500 mb-4">Tags used by only one bookmark. May indicate overly specific tagging.</p>
+            <div id="single-use-empty" class="hidden text-sm text-green-700">No single-use tags found.</div>
+            <div class="overflow-x-auto">
+                <table id="single-use-table" class="min-w-full divide-y divide-gray-200 hidden">
+                    <thead>
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tag</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Bookmark</th>
+                        </tr>
+                    </thead>
+                    <tbody id="single-use-body" class="divide-y divide-gray-100"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/api/v1/tags/suggestions')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('suggestions-content').classList.remove('hidden');
+            renderNearDuplicates(data.near_duplicates);
+            renderInconsistentCase(data.inconsistent_case);
+            renderOrphanedTags(data.orphaned_tags);
+            renderSingleUse(data.single_use_tags);
+        })
+        .catch(err => {
+            document.getElementById('loading').innerHTML =
+                '<p class="text-red-600">Failed to load suggestions: ' + err.message + '</p>';
+        });
+});
+
+function renderNearDuplicates(items) {
+    if (!items.length) {
+        document.getElementById('near-duplicates-empty').classList.remove('hidden');
+        return;
+    }
+    const table = document.getElementById('near-duplicates-table');
+    const body = document.getElementById('near-duplicates-body');
+    table.classList.remove('hidden');
+    items.forEach(item => {
+        const tr = document.createElement('tr');
+        const keepTag = item.count1 >= item.count2 ? item.tag1 : item.tag2;
+        const mergeTag = item.count1 >= item.count2 ? item.tag2 : item.tag1;
+        tr.innerHTML = `
+            <td class="px-4 py-3 text-sm font-medium text-gray-900">${esc(item.tag1)}</td>
+            <td class="px-4 py-3 text-sm font-medium text-gray-900">${esc(item.tag2)}</td>
+            <td class="px-4 py-3 text-sm text-gray-700 text-right">${(item.similarity * 100).toFixed(0)}%</td>
+            <td class="px-4 py-3 text-sm text-gray-700 text-right">${item.count1}</td>
+            <td class="px-4 py-3 text-sm text-gray-700 text-right">${item.count2}</td>
+            <td class="px-4 py-3 text-right">
+                <button onclick="mergeTags('${esc(mergeTag)}', '${esc(keepTag)}', this)"
+                    class="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200">
+                    Merge into ${esc(keepTag)}
+                </button>
+            </td>`;
+        body.appendChild(tr);
+    });
+}
+
+function renderInconsistentCase(items) {
+    if (!items.length) {
+        document.getElementById('inconsistent-case-empty').classList.remove('hidden');
+        return;
+    }
+    const container = document.getElementById('inconsistent-case-cards');
+    items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'bg-gray-50 rounded-lg p-4 border border-gray-200';
+        const variantBadges = item.variants.map(v =>
+            `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${v === item.suggested ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-700'}">${esc(v)}</span>`
+        ).join(' ');
+        div.innerHTML = `
+            <div class="flex flex-wrap gap-1 mb-3">${variantBadges}</div>
+            <p class="text-xs text-gray-500 mb-2">Total uses: ${item.total_count}</p>
+            <button onclick="standardizeCase(${JSON.stringify(item.variants).replace(/"/g, '&quot;')}, '${esc(item.suggested)}', this)"
+                class="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200">
+                Standardize to "${esc(item.suggested)}"
+            </button>`;
+        container.appendChild(div);
+    });
+}
+
+function renderOrphanedTags(items) {
+    if (!items.length) {
+        document.getElementById('orphaned-tags-empty').classList.remove('hidden');
+        return;
+    }
+    const list = document.getElementById('orphaned-tags-list');
+    items.forEach(item => {
+        const span = document.createElement('span');
+        span.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800';
+        span.textContent = item.name;
+        list.appendChild(span);
+    });
+}
+
+function renderSingleUse(items) {
+    if (!items.length) {
+        document.getElementById('single-use-empty').classList.remove('hidden');
+        return;
+    }
+    const table = document.getElementById('single-use-table');
+    const body = document.getElementById('single-use-body');
+    table.classList.remove('hidden');
+    items.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="px-4 py-3 text-sm font-medium text-gray-900">${esc(item.name)}</td>
+            <td class="px-4 py-3 text-sm text-gray-700">${esc(item.bookmark_title)}</td>`;
+        body.appendChild(tr);
+    });
+}
+
+function esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+function mergeTags(source, target, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Merging...';
+    // Future: call merge API endpoint
+    showGlobalStatus('info', 'Merge', 'Tag merge API not yet wired. Source: ' + source + ' -> ' + target, true);
+}
+
+function standardizeCase(variants, suggested, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Standardizing...';
+    const sources = variants.filter(v => v !== suggested);
+    // Future: call merge API endpoint
+    showGlobalStatus('info', 'Standardize', 'Case standardization API not yet wired. Merging: ' + sources.join(', ') + ' -> ' + suggested, true);
+}
+</script>
+{% endblock %}
