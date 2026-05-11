@@ -85,8 +85,8 @@
                             <th class="px-4 py-2 text-left"><input type="checkbox" id="select-all-suggestions" class="h-4 w-4 text-indigo-600 border-gray-300 rounded"></th>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Keep (target)</th>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Merge into target</th>
-                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Similarity</th>
                             <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Skip</th>
+                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Similarity</th>
                             <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
                         </tr>
                     </thead>
@@ -271,13 +271,13 @@
                                 ${pair.tag2} <span class="text-xs text-gray-400">(${pair.count2})</span>
                             </label>
                         </td>
-                        <td class="px-4 py-3 text-sm text-gray-600 text-right">${(pair.similarity * 100).toFixed(0)}%</td>
                         <td class="px-4 py-3 text-sm text-gray-600 text-center">
                             <label class="inline-flex items-center gap-1 cursor-pointer text-xs text-gray-500">
                                 <input type="radio" name="target-${idx}" value="skip" class="target-radio h-4 w-4 text-gray-400" onchange="onRadioChange(${idx}, ${equal})">
                                 skip
                             </label>
                         </td>
+                        <td class="px-4 py-3 text-sm text-gray-600 text-right">${(pair.similarity * 100).toFixed(0)}%</td>
                         <td class="px-4 py-3 text-right">
                             <button type="button" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
                                     onclick="fillMergeFromRow(${idx})">Manual</button>
