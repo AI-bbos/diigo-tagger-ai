@@ -599,6 +599,125 @@ async def tag_cloud(
         session.close()
 
 
+@router.get("/tags/suggestions")
+async def tag_suggestions():
+    """Generate tag cleanup suggestions.
+
+    Returns near-duplicate pairs, orphaned tags, inconsistent case variants,
+    and single-use tags to help users clean up their tag library.
+
+    Returns:
+        Dict with four suggestion categories: near_duplicates,
+        orphaned_tags, inconsistent_case, and single_use_tags.
+    """
+    import difflib
+    from sqlalchemy import func, select
+    from ...models import bookmark_tags, Bookmark
+
+    session = get_session()
+    try:
+        # --- near_duplicates (difflib, threshold 0.75, top 20) ---
+        all_tags = session.query(TagModel).all()
+        tag_names = [t.name for t in all_tags]
+
+        # Build bookmark-count lookup from association table
+        count_rows = (
+            session.query(
+                bookmark_tags.c.tag_id,
+                func.count(bookmark_tags.c.bookmark_id).label("cnt"),
+            )
+            .group_by(bookmark_tags.c.tag_id)
+            .all()
+        )
+        count_by_id = {row[0]: row[1] for row in count_rows}
+        tag_id_by_name = {t.name: t.id for t in all_tags}
+
+        pairs = []
+        for i in range(len(tag_names)):
+            for j in range(i + 1, len(tag_names)):
+                sim = difflib.SequenceMatcher(
+                    None, tag_names[i].lower(), tag_names[j].lower()
+                ).ratio()
+                if sim >= 0.75 and sim < 1.0:
+                    pairs.append({
+                        "tag1": tag_names[i],
+                        "tag2": tag_names[j],
+                        "similarity": round(sim, 3),
+                        "count1": count_by_id.get(tag_id_by_name[tag_names[i]], 0),
+                        "count2": count_by_id.get(tag_id_by_name[tag_names[j]], 0),
+                    })
+        pairs.sort(key=lambda p: p["similarity"], reverse=True)
+        near_duplicates = pairs[:20]
+
+        # --- orphaned_tags (0 bookmarks, limit 50) ---
+        tags_with_bookmarks = (
+            session.query(bookmark_tags.c.tag_id).distinct().subquery()
+        )
+        orphaned_query = (
+            session.query(TagModel.name)
+            .filter(~TagModel.id.in_(select(tags_with_bookmarks.c.tag_id)))
+            .order_by(TagModel.name)
+            .limit(50)
+            .all()
+        )
+        orphaned_tags = [{"name": name} for (name,) in orphaned_query]
+
+        # --- inconsistent_case ---
+        lower_groups: dict[str, list[str]] = {}
+        for t in all_tags:
+            key = t.name.lower()
+            lower_groups.setdefault(key, []).append(t.name)
+
+        inconsistent_case = []
+        for key, variants in lower_groups.items():
+            if len(variants) > 1:
+                # Suggested = variant with highest bookmark count
+                best = max(
+                    variants,
+                    key=lambda v: count_by_id.get(tag_id_by_name[v], 0),
+                )
+                total = sum(
+                    count_by_id.get(tag_id_by_name[v], 0) for v in variants
+                )
+                inconsistent_case.append({
+                    "variants": sorted(variants),
+                    "suggested": best,
+                    "total_count": total,
+                })
+        inconsistent_case.sort(key=lambda c: c["total_count"], reverse=True)
+
+        # --- single_use_tags (exactly 1 bookmark, limit 50) ---
+        single_use_subq = (
+            session.query(bookmark_tags.c.tag_id)
+            .group_by(bookmark_tags.c.tag_id)
+            .having(func.count(bookmark_tags.c.bookmark_id) == 1)
+            .subquery()
+        )
+        single_use_rows = (
+            session.query(TagModel.name, Bookmark.title)
+            .join(single_use_subq, TagModel.id == single_use_subq.c.tag_id)
+            .join(bookmark_tags, TagModel.id == bookmark_tags.c.tag_id)
+            .join(Bookmark, Bookmark.id == bookmark_tags.c.bookmark_id)
+            .order_by(TagModel.name)
+            .limit(50)
+            .all()
+        )
+        single_use_tags = [
+            {"name": name, "bookmark_title": title or ""}
+            for name, title in single_use_rows
+        ]
+
+        return {
+            "near_duplicates": near_duplicates,
+            "orphaned_tags": orphaned_tags,
+            "inconsistent_case": inconsistent_case,
+            "single_use_tags": single_use_tags,
+        }
+
+    finally:
+        session.close()
+
+
 @router.post("/bookmarks/resolve", response_model=AddBookmarkSuccessResponse)
 async def resolve_bookmark_conflict(request: ResolveConflictRequest):
     """
