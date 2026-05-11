@@ -72,8 +72,8 @@
         </div>
 
         <div id="suggestions-list" class="hidden">
-            <!-- Batch action bar (top) -->
-            <div id="batch-bar-top" class="hidden mb-3 flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-md px-4 py-2">
+            <!-- Batch action bar (top) — always visible when suggestions loaded -->
+            <div id="batch-bar-top" class="mb-3 flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-md px-4 py-2">
                 <span class="text-sm text-indigo-800"><span id="selected-count-top">0</span> pairs selected</span>
                 <button type="button" onclick="batchMerge()" class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md">Merge Selected</button>
             </div>
@@ -287,6 +287,10 @@
                 list.classList.remove('hidden');
                 // Show bottom bar if > 10 items
                 document.getElementById('batch-bar-bottom').classList.toggle('hidden', data.pairs.length <= 10);
+                // Auto-select all checkboxes for convenience
+                document.querySelectorAll('.suggestion-cb:not(:disabled)').forEach(cb => cb.checked = true);
+                document.getElementById('select-all-suggestions').checked = true;
+                updateBatchBars();
                 updateBatchBars();
             } else {
                 empty.classList.remove('hidden');
