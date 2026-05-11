@@ -493,15 +493,18 @@ async def merge_tags(request: MergeTagsRequest):
 async def similar_tags(
     threshold: float = Query(0.8, ge=0.5, le=1.0),
     limit: int = Query(20, ge=1, le=100),
+    min_count: int = Query(5, ge=0, le=1000, description="Minimum bookmark count per tag"),
 ):
     """Find similar tag pairs that are merge candidates.
 
     Uses string similarity (SequenceMatcher) to identify tags that may be
-    duplicates or near-duplicates.
+    duplicates or near-duplicates. Pre-filters by minimum bookmark count
+    and tag length similarity to keep response times fast.
 
     Args:
         threshold: Minimum similarity score (0.5-1.0).
         limit: Maximum number of pairs to return (1-100).
+        min_count: Minimum bookmarks a tag must have to be included (default 2).
 
     Returns:
         Dict with pairs list sorted by similarity descending.
@@ -511,24 +514,31 @@ async def similar_tags(
 
     session = get_session()
     try:
-        all_tags = session.query(TagModel).all()
+        # Single query to get all tags with their bookmark counts
+        tag_rows = (
+            session.query(TagModel.name, func.count(bookmark_tags.c.bookmark_id).label('cnt'))
+            .join(bookmark_tags, TagModel.id == bookmark_tags.c.tag_id)
+            .group_by(TagModel.id)
+            .having(func.count(bookmark_tags.c.bookmark_id) >= min_count)
+            .all()
+        )
 
-        # Build bookmark count lookup
-        tag_counts = {}
-        for tag in all_tags:
-            count = (
-                session.query(func.count())
-                .select_from(bookmark_tags)
-                .filter(bookmark_tags.c.tag_id == tag.id)
-                .scalar()
-            ) or 0
-            tag_counts[tag.name] = count
+        tag_counts = {name: cnt for name, cnt in tag_rows}
+        tag_names = list(tag_counts.keys())
 
-        # Find similar pairs
+        # Find similar pairs with length pre-filter
+        # Tags with very different lengths can't have high similarity
         pairs = []
-        tag_names = [t.name for t in all_tags]
         for i in range(len(tag_names)):
+            len_i = len(tag_names[i])
             for j in range(i + 1, len(tag_names)):
+                len_j = len(tag_names[j])
+                # Length ratio filter: if lengths differ by >2x, similarity can't exceed ~0.67
+                if len_i > 0 and len_j > 0:
+                    ratio = min(len_i, len_j) / max(len_i, len_j)
+                    if ratio < threshold:
+                        continue
+
                 similarity = difflib.SequenceMatcher(
                     None, tag_names[i], tag_names[j]
                 ).ratio()
