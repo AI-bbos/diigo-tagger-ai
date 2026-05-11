@@ -289,8 +289,8 @@
                 document.getElementById('batch-bar-bottom').classList.toggle('hidden', data.pairs.length <= 10);
                 // Auto-select all checkboxes for convenience
                 document.getElementById('total-pairs').textContent = data.pairs.length;
-                document.querySelectorAll('.suggestion-cb:not(:disabled)').forEach(cb => cb.checked = true);
-                document.getElementById('select-all-suggestions').checked = true;
+                // Auto-select rows as they scroll into view
+                initScrollSelect();
                 updateBatchBars();
                 updateBatchBars();
             } else {
@@ -409,6 +409,29 @@
         mergeResult.classList.remove('hidden');
         loadSuggestions();
     };
+
+    // Auto-select rows as they scroll into view
+    function initScrollSelect() {
+        const scrollContainer = document.querySelector('#suggestions-list .overflow-auto');
+        if (!scrollContainer) return;
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const cb = entry.target.querySelector('.suggestion-cb:not(:disabled)');
+                    if (cb && !cb.checked) {
+                        cb.checked = true;
+                        updateBatchBars();
+                    }
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { root: scrollContainer, threshold: 0.5 });
+
+        document.querySelectorAll('#suggestions-tbody tr').forEach(row => {
+            observer.observe(row);
+        });
+    }
 
     // Load suggestions on page load
     loadSuggestions();
