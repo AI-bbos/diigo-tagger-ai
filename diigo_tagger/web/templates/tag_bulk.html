@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+
+{% block title %}Bulk Tag Operations - Diigo Tagger{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-0">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Bulk Tag Operations</h1>
+        <a href="/tags" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+            &larr; Back to Tag Statistics
+        </a>
+    </div>
+
+    <!-- Action Bar (sticky) -->
+    <div id="action-bar" class="hidden sticky top-0 z-10 bg-white border border-gray-200 rounded-lg shadow-md p-4 mb-4">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+            <span id="selected-count" class="text-sm font-medium text-gray-700">0 tags selected</span>
+            <div class="flex items-center gap-2 flex-wrap">
+                <button id="btn-rename" onclick="doRename()" disabled
+                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                    Rename
+                </button>
+                <button id="btn-lowercase" onclick="doLowercase()"
+                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-yellow-600 hover:bg-yellow-700">
+                    Lowercase
+                </button>
+                <button id="btn-merge" onclick="doMerge()" disabled
+                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                    Merge
+                </button>
+                <button id="btn-delete" onclick="doDelete()"
+                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
+                    Delete
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search/Filter -->
+    <div class="mb-4">
+        <input type="text" id="tag-filter" placeholder="Filter tags..."
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500"
+            oninput="filterTags()">
+    </div>
+
+    <!-- Select All -->
+    <div class="mb-2 flex items-center gap-2 px-1">
+        <input type="checkbox" id="select-all" onchange="toggleSelectAll()" class="h-4 w-4 text-indigo-600 rounded border-gray-300">
+        <label for="select-all" class="text-sm text-gray-600">Select all visible</label>
+    </div>
+
+    <!-- Tag List -->
+    <div id="tag-list" class="bg-white border border-gray-200 rounded-lg shadow overflow-y-auto" style="max-height: 60vh;">
+        <div id="loading" class="p-8 text-center text-gray-500">Loading tags...</div>
+    </div>
+
+    <!-- Result message -->
+    <div id="result-message" class="hidden mt-4 p-4 rounded-lg"></div>
+</div>
+
+<!-- Confirmation Modal -->
+<div id="confirm-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+        <h3 id="modal-title" class="text-lg font-semibold text-gray-900 mb-2"></h3>
+        <p id="modal-message" class="text-sm text-gray-600 mb-4"></p>
+        <div id="modal-input-container" class="hidden mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-1">New name</label>
+            <input type="text" id="modal-input" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500">
+        </div>
+        <div class="flex justify-end gap-3">
+            <button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                Cancel
+            </button>
+            <button id="modal-confirm-btn" onclick="confirmAction()" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
+                Confirm
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let allTags = [];
+    let selectedTags = new Set();
+    let pendingAction = null;
+
+    // Load tags on page load
+    async function loadTags() {
+        try {
+            const resp = await fetch('/api/v1/tags/cloud?limit=500');
+            const data = await resp.json();
+            allTags = data.tags;
+            renderTags(allTags);
+        } catch (err) {
+            document.getElementById('loading').textContent = 'Failed to load tags: ' + err.message;
+        }
+    }
+
+    function renderTags(tags) {
+        const container = document.getElementById('tag-list');
+        if (tags.length === 0) {
+            container.innerHTML = '<div class="p-8 text-center text-gray-500">No tags found.</div>';
+            return;
+        }
+        let html = '';
+        for (const tag of tags) {
+            const checked = selectedTags.has(tag.name) ? 'checked' : '';
+            html += `
+                <label class="tag-item flex items-center gap-3 px-4 py-2.5 border-b border-gray-100 hover:bg-gray-50 cursor-pointer" data-name="${tag.name.toLowerCase()}">
+                    <input type="checkbox" class="tag-checkbox h-4 w-4 text-indigo-600 rounded border-gray-300"
+                        value="${tag.name}" ${checked} onchange="toggleTag('${tag.name.replace(/'/g, "\\'")}', this.checked)">
+                    <span class="flex-1 text-sm text-gray-900">${tag.name}</span>
+                    <span class="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">${tag.count}</span>
+                </label>`;
+        }
+        container.innerHTML = html;
+    }
+
+    function filterTags() {
+        const query = document.getElementById('tag-filter').value.toLowerCase();
+        const filtered = query ? allTags.filter(t => t.name.toLowerCase().includes(query)) : allTags;
+        renderTags(filtered);
+    }
+
+    function toggleTag(name, checked) {
+        if (checked) {
+            selectedTags.add(name);
+        } else {
+            selectedTags.delete(name);
+        }
+        updateActionBar();
+    }
+
+    function toggleSelectAll() {
+        const checkAll = document.getElementById('select-all').checked;
+        const visible = document.querySelectorAll('.tag-checkbox');
+        visible.forEach(cb => {
+            cb.checked = checkAll;
+            if (checkAll) {
+                selectedTags.add(cb.value);
+            } else {
+                selectedTags.delete(cb.value);
+            }
+        });
+        updateActionBar();
+    }
+
+    function updateActionBar() {
+        const bar = document.getElementById('action-bar');
+        const count = selectedTags.size;
+        if (count > 0) {
+            bar.classList.remove('hidden');
+            document.getElementById('selected-count').textContent = count + ' tag' + (count === 1 ? '' : 's') + ' selected';
+            document.getElementById('btn-rename').disabled = count !== 1;
+            document.getElementById('btn-merge').disabled = count < 2;
+        } else {
+            bar.classList.add('hidden');
+        }
+    }
+
+    function getSelectedBookmarkCount() {
+        let total = 0;
+        for (const name of selectedTags) {
+            const tag = allTags.find(t => t.name === name);
+            if (tag) total += tag.count;
+        }
+        return total;
+    }
+
+    // Operations
+    function doDelete() {
+        const names = Array.from(selectedTags);
+        const bmCount = getSelectedBookmarkCount();
+        showModal(
+            'Delete Tags',
+            `Delete ${names.length} tag(s)? This will remove them from ${bmCount} bookmark(s). This cannot be undone.`,
+            'bg-red-600 hover:bg-red-700',
+            false
+        );
+        pendingAction = () => executeBulk('delete', names);
+    }
+
+    function doRename() {
+        const name = Array.from(selectedTags)[0];
+        showModal(
+            'Rename Tag',
+            `Rename "${name}" to:`,
+            'bg-indigo-600 hover:bg-indigo-700',
+            true,
+            name
+        );
+        pendingAction = () => {
+            const newName = document.getElementById('modal-input').value.trim();
+            if (!newName) return;
+            executeBulk('rename', [name], newName);
+        };
+    }
+
+    function doLowercase() {
+        const names = Array.from(selectedTags);
+        const upperNames = names.filter(n => n !== n.toLowerCase());
+        if (upperNames.length === 0) {
+            showResult('info', 'All selected tags are already lowercase.');
+            return;
+        }
+        const bmCount = getSelectedBookmarkCount();
+        showModal(
+            'Lowercase Tags',
+            `Convert ${upperNames.length} tag(s) to lowercase? Affects up to ${bmCount} bookmark(s).`,
+            'bg-yellow-600 hover:bg-yellow-700',
+            false
+        );
+        pendingAction = () => executeBulk('lowercase', names);
+    }
+
+    function doMerge() {
+        const names = Array.from(selectedTags);
+        // Find the one with highest count
+        let best = null;
+        for (const name of names) {
+            const tag = allTags.find(t => t.name === name);
+            if (tag && (!best || tag.count > best.count)) best = tag;
+        }
+        const bmCount = getSelectedBookmarkCount();
+        showModal(
+            'Merge Tags',
+            `Merge ${names.length} tags into "${best ? best.name : names[0]}" (highest bookmark count)? Affects up to ${bmCount} bookmark(s).`,
+            'bg-purple-600 hover:bg-purple-700',
+            false
+        );
+        pendingAction = () => executeBulk('merge', names);
+    }
+
+    async function executeBulk(operation, tags, newName) {
+        closeModal();
+        const body = { operation, tags };
+        if (newName) body.new_name = newName;
+
+        try {
+            const resp = await fetch('/api/v1/tags/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                showResult('error', data.detail?.detail || data.detail || 'Operation failed');
+                return;
+            }
+            showResult('success',
+                `${operation}: ${data.affected_tags} tag(s), ${data.affected_bookmarks} bookmark(s) affected.`);
+            selectedTags.clear();
+            updateActionBar();
+            document.getElementById('select-all').checked = false;
+            await loadTags();
+        } catch (err) {
+            showResult('error', 'Request failed: ' + err.message);
+        }
+    }
+
+    // Modal
+    function showModal(title, message, btnClass, showInput, inputDefault) {
+        document.getElementById('modal-title').textContent = title;
+        document.getElementById('modal-message').textContent = message;
+        const inputContainer = document.getElementById('modal-input-container');
+        const input = document.getElementById('modal-input');
+        const btn = document.getElementById('modal-confirm-btn');
+        btn.className = 'px-4 py-2 text-sm font-medium text-white rounded-md ' + btnClass;
+        if (showInput) {
+            inputContainer.classList.remove('hidden');
+            input.value = inputDefault || '';
+            setTimeout(() => input.focus(), 100);
+        } else {
+            inputContainer.classList.add('hidden');
+        }
+        document.getElementById('confirm-modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+        document.getElementById('confirm-modal').classList.add('hidden');
+        pendingAction = null;
+    }
+
+    function confirmAction() {
+        if (pendingAction) pendingAction();
+    }
+
+    // Result message
+    function showResult(type, message) {
+        const el = document.getElementById('result-message');
+        el.classList.remove('hidden', 'bg-green-50', 'text-green-800', 'bg-red-50', 'text-red-800', 'bg-blue-50', 'text-blue-800');
+        if (type === 'success') {
+            el.classList.add('bg-green-50', 'text-green-800');
+        } else if (type === 'error') {
+            el.classList.add('bg-red-50', 'text-red-800');
+        } else {
+            el.classList.add('bg-blue-50', 'text-blue-800');
+        }
+        el.textContent = message;
+        setTimeout(() => el.classList.add('hidden'), 8000);
+    }
+
+    // Initialize
+    loadTags();
+</script>
+{% endblock %}
