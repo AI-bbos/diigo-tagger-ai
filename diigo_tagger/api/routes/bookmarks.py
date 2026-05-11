@@ -1,11 +1,13 @@
 # ABOUTME: Bookmark API endpoints for listing, searching, and adding bookmarks
 # ABOUTME: Thin layer that calls bookmark service for business logic
 
+import difflib
 import logging
 import os
 from typing import Optional, Union
 
 from fastapi import APIRouter, Query, HTTPException
+from pydantic import BaseModel
 
 from ...db import get_session
 from ...models import Bookmark as BookmarkModel, Tag as TagModel
@@ -416,6 +418,142 @@ async def tag_autocomplete(
 
         return {"tags": [tag.name for tag in tags], "tag_counts": tag_counts, "prefix": prefix}
 
+    finally:
+        session.close()
+
+
+class MergeTagsRequest(BaseModel):
+    """Request body for tag merge endpoint."""
+
+    source_tags: list[str]
+    target_tag: str
+    preview: bool = False
+
+
+@router.post("/tags/merge")
+async def merge_tags(request: MergeTagsRequest):
+    """Merge source tags into a target tag.
+
+    Moves all bookmarks from source tags to the target tag, then deletes
+    source tags. If preview=True, returns affected counts without merging.
+
+    Args:
+        request: MergeTagsRequest with source_tags, target_tag, preview flag.
+
+    Returns:
+        Dict with merged_count, target_tag, and affected_bookmarks.
+    """
+    from sqlalchemy import func
+    from ...models import bookmark_tags
+    from ...services.tag_reconciliation import TagReconciliationService
+
+    session = get_session()
+    try:
+        service = TagReconciliationService(session=session)
+
+        # Count affected bookmarks (bookmarks that have any of the source tags)
+        source_tag_objs = (
+            session.query(TagModel)
+            .filter(TagModel.name.in_([s.strip().lower() for s in request.source_tags]))
+            .all()
+        )
+        source_tag_ids = [t.id for t in source_tag_objs]
+
+        affected_bookmarks = 0
+        if source_tag_ids:
+            affected_bookmarks = (
+                session.query(func.count(func.distinct(bookmark_tags.c.bookmark_id)))
+                .filter(bookmark_tags.c.tag_id.in_(source_tag_ids))
+                .scalar()
+            ) or 0
+
+        if request.preview:
+            return {
+                "merged_count": len(source_tag_objs),
+                "target_tag": request.target_tag.strip().lower(),
+                "affected_bookmarks": affected_bookmarks,
+            }
+
+        # Perform merge
+        service.merge_tags(
+            source_tags=request.source_tags,
+            target_tag=request.target_tag,
+        )
+
+        return {
+            "merged_count": len(source_tag_objs),
+            "target_tag": request.target_tag.strip().lower(),
+            "affected_bookmarks": affected_bookmarks,
+        }
+    finally:
+        session.close()
+
+
+@router.get("/tags/similar")
+async def similar_tags(
+    threshold: float = Query(0.8, ge=0.5, le=1.0),
+    limit: int = Query(20, ge=1, le=500),
+    min_count: int = Query(5, ge=0, le=1000, description="Minimum bookmark count per tag"),
+):
+    """Find similar tag pairs that are merge candidates.
+
+    Uses string similarity (SequenceMatcher) to identify tags that may be
+    duplicates or near-duplicates. Pre-filters by minimum bookmark count
+    and tag length similarity to keep response times fast.
+
+    Args:
+        threshold: Minimum similarity score (0.5-1.0).
+        limit: Maximum number of pairs to return (1-100).
+        min_count: Minimum bookmarks a tag must have to be included (default 2).
+
+    Returns:
+        Dict with pairs list sorted by similarity descending.
+    """
+    from sqlalchemy import func
+    from ...models import bookmark_tags
+
+    session = get_session()
+    try:
+        # Single query to get all tags with their bookmark counts
+        tag_rows = (
+            session.query(TagModel.name, func.count(bookmark_tags.c.bookmark_id).label('cnt'))
+            .join(bookmark_tags, TagModel.id == bookmark_tags.c.tag_id)
+            .group_by(TagModel.id)
+            .having(func.count(bookmark_tags.c.bookmark_id) >= min_count)
+            .all()
+        )
+
+        tag_counts = {name: cnt for name, cnt in tag_rows}
+        tag_names = list(tag_counts.keys())
+
+        # Find similar pairs with length pre-filter
+        # Tags with very different lengths can't have high similarity
+        pairs = []
+        for i in range(len(tag_names)):
+            len_i = len(tag_names[i])
+            for j in range(i + 1, len(tag_names)):
+                len_j = len(tag_names[j])
+                # Length ratio filter: if lengths differ by >2x, similarity can't exceed ~0.67
+                if len_i > 0 and len_j > 0:
+                    ratio = min(len_i, len_j) / max(len_i, len_j)
+                    if ratio < threshold:
+                        continue
+
+                similarity = difflib.SequenceMatcher(
+                    None, tag_names[i], tag_names[j]
+                ).ratio()
+                if similarity >= threshold:
+                    pairs.append({
+                        "tag1": tag_names[i],
+                        "tag2": tag_names[j],
+                        "similarity": round(similarity, 3),
+                        "count1": tag_counts[tag_names[i]],
+                        "count2": tag_counts[tag_names[j]],
+                    })
+
+        # Sort by similarity descending
+        pairs.sort(key=lambda p: p["similarity"], reverse=True)
+        return {"pairs": pairs[:limit]}
     finally:
         session.close()
 

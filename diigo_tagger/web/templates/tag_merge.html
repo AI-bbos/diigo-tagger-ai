@@ -1,0 +1,575 @@
+{# ABOUTME: Tag merge page with manual merge form and similarity suggestions #}
+{# ABOUTME: Uses HTMX-style fetch calls against /api/v1/tags/merge and /api/v1/tags/similar #}
+{% extends "base.html" %}
+
+{% block title %}Tag Merge - Diigo Tagger{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-0">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Tag Merge</h1>
+        <a href="/tags" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">&larr; Back to Tags</a>
+    </div>
+
+    <!-- Section 1: Manual Merge -->
+    <div class="bg-white rounded-lg shadow p-6 border border-gray-200 mb-8">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Manual Merge</h2>
+        <p class="text-sm text-gray-500 mb-4">Merge one or more source tags into a single target tag. All bookmarks with source tags will be reassigned to the target.</p>
+
+        <form id="merge-form" class="space-y-4">
+            <div>
+                <label for="source-tags" class="block text-sm font-medium text-gray-700 mb-1">Source Tags (comma-separated)</label>
+                <input type="text" id="source-tags" name="source_tags"
+                       placeholder="e.g. python3, py3, python-3"
+                       class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2">
+            </div>
+            <div class="relative">
+                <label for="target-tag" class="block text-sm font-medium text-gray-700 mb-1">Target Tag</label>
+                <input type="text" id="target-tag" name="target_tag"
+                       placeholder="e.g. python"
+                       autocomplete="off"
+                       class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2">
+                <ul id="autocomplete-list" class="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto hidden"></ul>
+            </div>
+
+            <div id="preview-area" class="hidden bg-blue-50 border border-blue-200 rounded-md p-4">
+                <p class="text-sm text-blue-800" id="preview-text"></p>
+            </div>
+
+            <div class="flex gap-3">
+                <button type="button" id="preview-btn"
+                        class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Preview
+                </button>
+                <button type="button" id="merge-btn"
+                        class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Merge Tags
+                </button>
+            </div>
+        </form>
+
+        <div id="merge-result" class="mt-4 hidden"></div>
+    </div>
+
+    <!-- Section 2: Suggested Merges -->
+    <div class="bg-white rounded-lg shadow p-6 border border-gray-200">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-gray-900">Suggested Merges</h2>
+            <div class="flex items-center gap-3">
+                <label for="threshold-slider" class="text-sm text-gray-600">Similarity:</label>
+                <input type="range" id="threshold-slider" min="50" max="100" value="80" step="5"
+                       class="w-32 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                <span id="threshold-value" class="text-sm font-medium text-gray-700 w-10">0.80</span>
+                <button type="button" id="refresh-suggestions-btn"
+                        class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md shadow-sm text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Refresh
+                </button>
+            </div>
+        </div>
+
+        <div id="suggestions-loading" class="text-center py-8 text-gray-500 text-sm">
+            Loading suggestions...
+        </div>
+
+        <div id="suggestions-list" class="hidden">
+            <!-- Pair count + batch action bar -->
+            <div id="batch-bar-top" class="mb-3 flex flex-wrap items-center justify-between gap-2 bg-indigo-50 border border-indigo-200 rounded-md px-4 py-2">
+                <span class="text-sm text-indigo-800"><span id="total-pairs">0</span> pairs found — <span id="selected-count-top">0</span> selected</span>
+                <div class="flex items-center gap-3">
+                    <label class="inline-flex items-center gap-1.5 text-sm text-indigo-700 cursor-pointer">
+                        <input type="checkbox" id="hide-plurals" class="h-4 w-4 text-indigo-600 border-gray-300 rounded" onchange="togglePluralFilter()">
+                        Hide singular/plural pairs
+                    </label>
+                    <button type="button" onclick="batchMerge()" class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md">Merge Selected</button>
+                </div>
+            </div>
+
+            <div class="overflow-auto" style="max-height: 70vh;">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="sticky top-0 bg-white z-10 shadow-sm">
+                        <tr>
+                            <th class="px-4 py-2 text-left"><input type="checkbox" id="select-all-suggestions" class="h-4 w-4 text-indigo-600 border-gray-300 rounded"></th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Keep (target)</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Merge into target</th>
+                            <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"><label class="inline-flex items-center gap-1 cursor-pointer">Skip <input type="checkbox" id="skip-all" class="h-4 w-4 text-gray-400 border-gray-300 rounded"></label></th>
+                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Similarity</th>
+                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="suggestions-tbody" class="divide-y divide-gray-100">
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Batch action bar (bottom, shown when > 10 items) -->
+            <div id="batch-bar-bottom" class="hidden mt-3 flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-md px-4 py-2">
+                <span class="text-sm text-indigo-800"><span id="selected-count-bottom">0</span> selected</span>
+                <button type="button" onclick="batchMerge()" class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md">Merge Selected</button>
+            </div>
+        </div>
+
+        <div id="suggestions-empty" class="hidden text-center py-8 text-gray-500 text-sm">
+            No similar tag pairs found at this threshold.
+        </div>
+    </div>
+
+    <!-- Skipped pairs -->
+    <div id="skipped-section" class="hidden bg-white rounded-lg shadow p-6 border border-gray-200 mt-8">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-gray-500">Previously Skipped <span id="skipped-count" class="text-sm font-normal">(0)</span></h2>
+            <button type="button" onclick="restoreSelected()" class="px-3 py-1.5 text-sm font-medium text-indigo-600 border border-indigo-300 rounded-md hover:bg-indigo-50">Restore Selected to Suggestions</button>
+        </div>
+        <div class="overflow-auto" style="max-height: 50vh;">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="sticky top-0 bg-white z-10">
+                    <tr>
+                        <th class="px-4 py-2 text-left"><input type="checkbox" id="select-all-skipped" class="h-4 w-4 text-indigo-600 border-gray-300 rounded"></th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Tag 1</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Tag 2</th>
+                        <th class="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Similarity</th>
+                    </tr>
+                </thead>
+                <tbody id="skipped-tbody" class="divide-y divide-gray-50">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function() {
+    const sourceInput = document.getElementById('source-tags');
+    const targetInput = document.getElementById('target-tag');
+    const autocompleteList = document.getElementById('autocomplete-list');
+    const previewBtn = document.getElementById('preview-btn');
+    const mergeBtn = document.getElementById('merge-btn');
+    const previewArea = document.getElementById('preview-area');
+    const previewText = document.getElementById('preview-text');
+    const mergeResult = document.getElementById('merge-result');
+    const thresholdSlider = document.getElementById('threshold-slider');
+    const thresholdValue = document.getElementById('threshold-value');
+    const refreshBtn = document.getElementById('refresh-suggestions-btn');
+
+    // Autocomplete for target tag
+    let autocompleteTimeout = null;
+    targetInput.addEventListener('input', function() {
+        clearTimeout(autocompleteTimeout);
+        const val = this.value.trim();
+        if (val.length < 1) {
+            autocompleteList.classList.add('hidden');
+            return;
+        }
+        autocompleteTimeout = setTimeout(async () => {
+            try {
+                const resp = await fetch(`/api/v1/tags/autocomplete?q=${encodeURIComponent(val)}&limit=10`);
+                const data = await resp.json();
+                if (data.tags && data.tags.length > 0) {
+                    autocompleteList.innerHTML = data.tags.map(tag =>
+                        `<li class="px-3 py-2 text-sm text-gray-700 hover:bg-indigo-50 cursor-pointer" data-tag="${tag}">${tag} <span class="text-gray-400 text-xs">(${data.tag_counts[tag] || 0})</span></li>`
+                    ).join('');
+                    autocompleteList.classList.remove('hidden');
+                } else {
+                    autocompleteList.classList.add('hidden');
+                }
+            } catch (e) {
+                autocompleteList.classList.add('hidden');
+            }
+        }, 200);
+    });
+
+    autocompleteList.addEventListener('click', function(e) {
+        const li = e.target.closest('li');
+        if (li) {
+            targetInput.value = li.dataset.tag;
+            autocompleteList.classList.add('hidden');
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!targetInput.contains(e.target) && !autocompleteList.contains(e.target)) {
+            autocompleteList.classList.add('hidden');
+        }
+    });
+
+    // Preview
+    previewBtn.addEventListener('click', async function() {
+        const sourceTags = sourceInput.value.split(',').map(s => s.trim()).filter(Boolean);
+        const targetTag = targetInput.value.trim();
+        if (sourceTags.length === 0 || !targetTag) {
+            showGlobalStatus('warning', 'Missing Input', 'Please enter both source tags and a target tag.');
+            return;
+        }
+        try {
+            const resp = await fetch(`/api/v1/tags/merge`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({source_tags: sourceTags, target_tag: targetTag, preview: true})
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                previewText.textContent = `Will merge ${data.merged_count} source tag(s) into "${data.target_tag}". Affected bookmarks: ${data.affected_bookmarks}.`;
+                previewArea.classList.remove('hidden');
+            } else {
+                showGlobalStatus('error', 'Preview Failed', data.detail || 'Unknown error');
+            }
+        } catch (e) {
+            showGlobalStatus('error', 'Network Error', 'Could not reach the server.');
+        }
+    });
+
+    // Merge
+    mergeBtn.addEventListener('click', async function() {
+        const sourceTags = sourceInput.value.split(',').map(s => s.trim()).filter(Boolean);
+        const targetTag = targetInput.value.trim();
+        if (sourceTags.length === 0 || !targetTag) {
+            showGlobalStatus('warning', 'Missing Input', 'Please enter both source tags and a target tag.');
+            return;
+        }
+        if (!confirm(`Merge [${sourceTags.join(', ')}] into "${targetTag}"? This cannot be undone.`)) return;
+
+        try {
+            const resp = await fetch(`/api/v1/tags/merge`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({source_tags: sourceTags, target_tag: targetTag})
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                mergeResult.innerHTML = `<div class="bg-green-50 border border-green-200 rounded-md p-4"><p class="text-sm text-green-800">Merged ${data.merged_count} tag(s) into "${data.target_tag}". ${data.affected_bookmarks} bookmark(s) affected.</p></div>`;
+                mergeResult.classList.remove('hidden');
+                previewArea.classList.add('hidden');
+                sourceInput.value = '';
+                targetInput.value = '';
+                loadSuggestions();
+            } else {
+                showGlobalStatus('error', 'Merge Failed', data.detail || 'Unknown error');
+            }
+        } catch (e) {
+            showGlobalStatus('error', 'Network Error', 'Could not reach the server.');
+        }
+    });
+
+    // Threshold slider
+    thresholdSlider.addEventListener('input', function() {
+        thresholdValue.textContent = (this.value / 100).toFixed(2);
+    });
+
+    refreshBtn.addEventListener('click', loadSuggestions);
+
+    // Load suggestions
+    async function loadSuggestions() {
+        const loading = document.getElementById('suggestions-loading');
+        const list = document.getElementById('suggestions-list');
+        const empty = document.getElementById('suggestions-empty');
+        const tbody = document.getElementById('suggestions-tbody');
+
+        loading.classList.remove('hidden');
+        list.classList.add('hidden');
+        empty.classList.add('hidden');
+
+        const threshold = thresholdSlider.value / 100;
+        try {
+            const resp = await fetch(`/api/v1/tags/similar?threshold=${threshold}&limit=500`);
+            const data = await resp.json();
+            loading.classList.add('hidden');
+
+            if (data.pairs && data.pairs.length > 0) {
+                tbody.innerHTML = data.pairs.map((pair, idx) => {
+                    const equal = pair.count1 === pair.count2;
+                    const tag1IsTarget = pair.count1 >= pair.count2;
+                    const preselect1 = !equal && tag1IsTarget;
+                    const preselect2 = !equal && !tag1IsTarget;
+                    // Checkbox disabled when equal counts and no radio selected yet
+                    const cbDisabled = equal ? 'disabled' : '';
+                    const tag1Border = preselect1 ? 'border-2 border-indigo-400 rounded px-1' : '';
+                    const tag2Border = preselect2 ? 'border-2 border-indigo-400 rounded px-1' : '';
+                    return `<tr data-tag1="${pair.tag1}" data-tag2="${pair.tag2}">
+                        <td class="px-4 py-3"><input type="checkbox" class="suggestion-cb h-4 w-4 text-indigo-600 border-gray-300 rounded" data-idx="${idx}" ${cbDisabled} onchange="updateBatchBars()"></td>
+                        <td class="px-4 py-3 text-sm text-gray-900">
+                            <label class="inline-flex items-center gap-1 cursor-pointer ${tag1Border}">
+                                <input type="radio" name="target-${idx}" value="${pair.tag1}" data-other="${pair.tag2}" class="target-radio h-4 w-4 text-indigo-600" ${preselect1 ? 'checked' : ''} onchange="onRadioChange(${idx}, ${equal})">
+                                ${pair.tag1} <span class="text-xs text-gray-400">(${pair.count1})</span>
+                            </label>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-900">
+                            <label class="inline-flex items-center gap-1 cursor-pointer ${tag2Border}">
+                                <input type="radio" name="target-${idx}" value="${pair.tag2}" data-other="${pair.tag1}" class="target-radio h-4 w-4 text-indigo-600" ${preselect2 ? 'checked' : ''} onchange="onRadioChange(${idx}, ${equal})">
+                                ${pair.tag2} <span class="text-xs text-gray-400">(${pair.count2})</span>
+                            </label>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600 text-center">
+                            <label class="inline-flex items-center gap-1 cursor-pointer text-xs text-gray-500">
+                                <input type="radio" name="target-${idx}" value="skip" class="target-radio h-4 w-4 text-gray-400" onchange="onRadioChange(${idx}, ${equal})">
+                                skip
+                            </label>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600 text-right">${(pair.similarity * 100).toFixed(0)}%</td>
+                        <td class="px-4 py-3 text-right">
+                            <button type="button" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                                    onclick="fillMergeFromRow(${idx})">Manual</button>
+                        </td>
+                    </tr>`;
+                }).join('');
+                list.classList.remove('hidden');
+                // Show bottom bar if > 10 items
+                document.getElementById('batch-bar-bottom').classList.toggle('hidden', data.pairs.length <= 10);
+                // Auto-select all checkboxes for convenience
+                document.getElementById('total-pairs').textContent = data.pairs.length;
+                // Auto-select rows as they scroll into view
+                initScrollSelect();
+                updateBatchBars();
+                updateBatchBars();
+            } else {
+                empty.classList.remove('hidden');
+            }
+        } catch (e) {
+            loading.classList.add('hidden');
+            empty.textContent = 'Failed to load suggestions.';
+            empty.classList.remove('hidden');
+        }
+    }
+
+    window.fillMerge = function(source, target) {
+        sourceInput.value = source;
+        targetInput.value = target;
+        previewArea.classList.add('hidden');
+        mergeResult.classList.add('hidden');
+        window.scrollTo({top: 0, behavior: 'smooth'});
+    };
+
+    // Fill manual merge form from a table row
+    window.fillMergeFromRow = function(idx) {
+        const selected = document.querySelector(`input[name="target-${idx}"]:checked`);
+        if (!selected) {
+            alert('Please select which tag to keep first.');
+            return;
+        }
+        fillMerge(selected.dataset.other, selected.value);
+    };
+
+    // Skipped pairs state (in-memory only, lost on refresh)
+    const skippedPairs = [];
+
+    // When radio changes: enable checkbox for equal-count rows, move to skipped on skip
+    window.onRadioChange = function(idx, wasEqual) {
+        const cb = document.querySelector(`.suggestion-cb[data-idx="${idx}"]`);
+        const selected = document.querySelector(`input[name="target-${idx}"]:checked`);
+        if (wasEqual && cb) cb.disabled = false;
+        if (selected && selected.value === 'skip') {
+            // Animate then move to skipped table
+            const row = cb ? cb.closest('tr') : null;
+            if (row) {
+                const tag1El = row.querySelectorAll('td')[1];
+                const tag2El = row.querySelectorAll('td')[2];
+                const simEl = row.querySelectorAll('td')[4];
+                const pairData = {
+                    tag1: tag1El ? tag1El.textContent.trim() : '',
+                    tag2: tag2El ? tag2El.textContent.trim() : '',
+                    similarity: simEl ? simEl.textContent.trim() : '',
+                    idx: idx
+                };
+                // Visual: fade + slide down
+                row.style.transition = 'all 0.4s ease-out';
+                row.style.opacity = '0.3';
+                row.style.transform = 'translateY(20px)';
+                row.style.backgroundColor = '#fef3c7';
+                setTimeout(() => {
+                    skippedPairs.push(pairData);
+                    row.remove();
+                    renderSkipped();
+                    updateBatchBars();
+                    const remaining = document.querySelectorAll('#suggestions-tbody tr').length;
+                    document.getElementById('total-pairs').textContent = remaining;
+                }, 400);
+                return;
+            }
+        } else if (selected && selected.value !== 'skip' && cb && !cb.disabled) {
+            cb.checked = true;
+        }
+        updateBatchBars();
+    };
+
+    function renderSkipped() {
+        const section = document.getElementById('skipped-section');
+        const tbody = document.getElementById('skipped-tbody');
+        const countEl = document.getElementById('skipped-count');
+
+        if (skippedPairs.length === 0) {
+            section.classList.add('hidden');
+            return;
+        }
+
+        section.classList.remove('hidden');
+        countEl.textContent = `(${skippedPairs.length})`;
+        tbody.innerHTML = skippedPairs.map((pair, i) =>
+            `<tr>
+                <td class="px-4 py-2"><input type="checkbox" class="skipped-cb h-4 w-4 text-indigo-600 border-gray-300 rounded" data-skipped-idx="${i}"></td>
+                <td class="px-4 py-2 text-sm text-gray-500">${pair.tag1}</td>
+                <td class="px-4 py-2 text-sm text-gray-500">${pair.tag2}</td>
+                <td class="px-4 py-2 text-sm text-gray-400 text-right">${pair.similarity}</td>
+            </tr>`
+        ).join('');
+    }
+
+    // Select all skipped
+    document.getElementById('select-all-skipped').addEventListener('change', function() {
+        document.querySelectorAll('.skipped-cb').forEach(cb => cb.checked = this.checked);
+    });
+
+    // Restore selected skipped pairs back to suggestions
+    window.restoreSelected = function() {
+        const checked = document.querySelectorAll('.skipped-cb:checked');
+        if (checked.length === 0) return;
+
+        // Collect indices to restore (reverse order to avoid index shifting)
+        const indices = Array.from(checked).map(cb => parseInt(cb.dataset.skippedIdx)).sort((a, b) => b - a);
+        indices.forEach(i => skippedPairs.splice(i, 1));
+
+        // Reload suggestions to get fresh rows
+        renderSkipped();
+        loadSuggestions();
+    };
+
+    // Skip all — select skip radio on every row
+    document.getElementById('skip-all').addEventListener('change', function() {
+        const skipRadios = document.querySelectorAll('input.target-radio[value="skip"]');
+        if (this.checked) {
+            skipRadios.forEach(r => r.checked = true);
+        } else {
+            // Uncheck skip radios and restore pre-selected targets
+            skipRadios.forEach(r => r.checked = false);
+            // Re-check the pre-selected (first non-skip radio with border)
+            document.querySelectorAll('input.target-radio:not([value="skip"])').forEach(r => {
+                if (r.parentElement.classList.contains('border-2')) r.checked = true;
+            });
+        }
+    });
+
+    // Select all checkbox (only selects enabled checkboxes)
+    document.getElementById('select-all-suggestions').addEventListener('change', function() {
+        document.querySelectorAll('.suggestion-cb:not(:disabled)').forEach(cb => cb.checked = this.checked);
+        updateBatchBars();
+    });
+
+    // Update batch bar visibility and count
+    window.updateBatchBars = function() {
+        const checked = document.querySelectorAll('.suggestion-cb:checked');
+        const count = checked.length;
+        const topBar = document.getElementById('batch-bar-top');
+        const bottomBar = document.getElementById('batch-bar-bottom');
+        document.getElementById('selected-count-top').textContent = count;
+        document.getElementById('selected-count-bottom').textContent = count;
+        topBar.classList.toggle('hidden', count === 0);
+        const totalRows = document.querySelectorAll('.suggestion-cb').length;
+        bottomBar.classList.toggle('hidden', count === 0 || totalRows <= 10);
+    };
+
+    // Batch merge all selected pairs using radio selection for target
+    window.batchMerge = async function() {
+        const checked = document.querySelectorAll('.suggestion-cb:checked');
+        if (checked.length === 0) return;
+
+        const pairs = [];
+        let missingChoice = false;
+        checked.forEach(cb => {
+            const idx = cb.dataset.idx;
+            const selected = document.querySelector(`input[name="target-${idx}"]:checked`);
+            if (!selected) {
+                missingChoice = true;
+            } else if (selected.value === 'skip') {
+                // User chose to skip this pair — don't merge
+            } else {
+                pairs.push({ source: selected.dataset.other, target: selected.value });
+            }
+        });
+
+        if (missingChoice) {
+            alert('Some selected pairs have no target chosen. Please select which tag to keep for each pair.');
+            return;
+        }
+
+        if (!confirm(`Merge ${pairs.length} tag pair(s)? This cannot be undone.`)) return;
+
+        let succeeded = 0;
+        let failed = 0;
+        for (const pair of pairs) {
+            try {
+                const resp = await fetch('/api/v1/tags/merge', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({source_tags: [pair.source], target_tag: pair.target})
+                });
+                if (resp.ok) succeeded++;
+                else failed++;
+            } catch (e) {
+                failed++;
+            }
+        }
+
+        mergeResult.innerHTML = `<div class="bg-green-50 border border-green-200 rounded-md p-4"><p class="text-sm text-green-800">Batch merge complete: ${succeeded} succeeded, ${failed} failed.</p></div>`;
+        mergeResult.classList.remove('hidden');
+        loadSuggestions();
+    };
+
+    // Detect if two tags are singular/plural variants of each other
+    function isPluralPair(tag1, tag2) {
+        const a = tag1.toLowerCase();
+        const b = tag2.toLowerCase();
+        // One is the other + 's', 'es', or 'ies'/'y' swap
+        if (a + 's' === b || b + 's' === a) return true;
+        if (a + 'es' === b || b + 'es' === a) return true;
+        // y → ies (e.g., "category" / "categories")
+        if (a.endsWith('y') && b === a.slice(0, -1) + 'ies') return true;
+        if (b.endsWith('y') && a === b.slice(0, -1) + 'ies') return true;
+        return false;
+    }
+
+    window.togglePluralFilter = function() {
+        const hide = document.getElementById('hide-plurals').checked;
+        let hiddenCount = 0;
+        document.querySelectorAll('#suggestions-tbody tr').forEach(row => {
+            const tag1 = row.dataset.tag1;
+            const tag2 = row.dataset.tag2;
+            if (hide && isPluralPair(tag1, tag2)) {
+                row.style.display = 'none';
+                hiddenCount++;
+            } else {
+                row.style.display = '';
+            }
+        });
+        // Update visible count
+        const total = document.querySelectorAll('#suggestions-tbody tr').length;
+        document.getElementById('total-pairs').textContent = `${total - hiddenCount} of ${total}`;
+        updateBatchBars();
+    };
+
+    // Auto-select rows as they scroll into view
+    function initScrollSelect() {
+        const scrollContainer = document.querySelector('#suggestions-list .overflow-auto');
+        if (!scrollContainer) return;
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const cb = entry.target.querySelector('.suggestion-cb:not(:disabled)');
+                    if (cb && !cb.checked) {
+                        cb.checked = true;
+                        updateBatchBars();
+                    }
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { root: scrollContainer, threshold: 0.5 });
+
+        document.querySelectorAll('#suggestions-tbody tr').forEach(row => {
+            observer.observe(row);
+        });
+    }
+
+    // Load suggestions on page load
+    loadSuggestions();
+})();
+</script>
+{% endblock %}
