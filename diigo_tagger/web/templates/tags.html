@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Tag Statistics - Diigo Tagger{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-0">
+    <h1 class="text-2xl font-bold text-gray-900 mb-6">Tag Statistics & Analytics</h1>
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <div class="bg-white rounded-lg shadow p-5 border border-gray-200">
+            <dt class="text-sm font-medium text-gray-500 truncate">Total Tags</dt>
+            <dd class="mt-1 text-3xl font-semibold text-gray-900">{{ stats.total_tags }}</dd>
+        </div>
+        <div class="bg-white rounded-lg shadow p-5 border border-gray-200">
+            <dt class="text-sm font-medium text-gray-500 truncate">Total Bookmarks</dt>
+            <dd class="mt-1 text-3xl font-semibold text-gray-900">{{ stats.total_bookmarks }}</dd>
+        </div>
+        <div class="bg-white rounded-lg shadow p-5 border border-gray-200">
+            <dt class="text-sm font-medium text-gray-500 truncate">Avg Tags/Bookmark</dt>
+            <dd class="mt-1 text-3xl font-semibold text-gray-900">{{ stats.tags_per_bookmark_avg }}</dd>
+        </div>
+        <div class="bg-white rounded-lg shadow p-5 border border-gray-200">
+            <dt class="text-sm font-medium text-gray-500 truncate">Orphaned Tags</dt>
+            <dd class="mt-1 text-3xl font-semibold text-amber-600">{{ stats.orphaned_count }}</dd>
+        </div>
+        <div class="bg-white rounded-lg shadow p-5 border border-gray-200">
+            <dt class="text-sm font-medium text-gray-500 truncate">Single-Use Tags</dt>
+            <dd class="mt-1 text-3xl font-semibold text-gray-900">{{ stats.single_use_tags }}</dd>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Top 20 Tags Bar Chart -->
+        <div class="bg-white rounded-lg shadow p-6 border border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Top 20 Tags</h2>
+            {% if stats.top_tags %}
+            <div class="space-y-2">
+                {% set max_count = stats.top_tags[0].count if stats.top_tags else 1 %}
+                {% for tag in stats.top_tags %}
+                <div class="flex items-center gap-3">
+                    <span class="text-sm text-gray-700 w-32 truncate flex-shrink-0" title="{{ tag.name }}">{{ tag.name }}</span>
+                    <div class="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
+                        <div class="bg-indigo-500 h-5 rounded-full" style="width: {{ (tag.count / max_count * 100)|round }}%"></div>
+                    </div>
+                    <span class="text-sm text-gray-500 w-10 text-right flex-shrink-0">{{ tag.count }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-gray-500 text-sm">No tags with bookmarks yet.</p>
+            {% endif %}
+        </div>
+
+        <!-- Source Breakdown -->
+        <div class="bg-white rounded-lg shadow p-6 border border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Tags by Source</h2>
+            {% if stats.source_breakdown %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead>
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Count</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Proportion</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        {% set colors = {"diigo": "bg-blue-500", "user": "bg-green-500", "master": "bg-purple-500", "system": "bg-gray-500"} %}
+                        {% for source, count in stats.source_breakdown.items() %}
+                        <tr>
+                            <td class="px-4 py-3 text-sm font-medium text-gray-900 capitalize">{{ source }}</td>
+                            <td class="px-4 py-3 text-sm text-gray-700 text-right">{{ count }}</td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <div class="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+                                        <div class="{{ colors.get(source, 'bg-gray-400') }} h-3 rounded-full" style="width: {{ (count / stats.total_tags * 100)|round if stats.total_tags > 0 else 0 }}%"></div>
+                                    </div>
+                                    <span class="text-xs text-gray-500 w-10 text-right">{{ ((count / stats.total_tags * 100)|round)|int if stats.total_tags > 0 else 0 }}%</span>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-gray-500 text-sm">No tags in the database.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Orphaned Tags -->
+    <div class="mt-8 bg-white rounded-lg shadow p-6 border border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-900 mb-2">Orphaned Tags</h2>
+        <p class="text-sm text-gray-500 mb-4">Tags not associated with any bookmark. These may be candidates for cleanup.</p>
+        {% if stats.orphaned_tags %}
+        <div class="flex flex-wrap gap-2">
+            {% for tag in stats.orphaned_tags %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                {{ tag.name }}
+            </span>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-green-700">No orphaned tags found. All tags are associated with at least one bookmark.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

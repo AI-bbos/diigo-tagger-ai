@@ -359,6 +359,20 @@ async def submit_bookmark(request: SubmitBookmarkRequest):
         session.close()
 
 
+@router.get("/tags/statistics")
+async def tag_statistics():
+    """Return tag usage statistics and analytics."""
+    from ...services.tag_service import TagService
+
+    session = get_session()
+    try:
+        service = TagService(session=session)
+        stats = service.get_statistics()
+        return stats
+    finally:
+        session.close()
+
+
 @router.get("/tags/autocomplete")
 async def tag_autocomplete(
     prefix: str = Query("", description="Tag prefix to filter by (optional)"),

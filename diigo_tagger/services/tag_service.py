@@ -158,3 +158,118 @@ class TagService:
             "total_usage": total_usage,
             "by_source": by_source
         }
+
+    def get_statistics(self) -> dict:
+        """
+        Get comprehensive tag statistics and analytics.
+
+        Queries the bookmark_tags association table for accurate counts
+        rather than relying on the Tag.count column.
+
+        Returns:
+            Dict with detailed tag analytics:
+            {
+                "total_tags": int,
+                "total_bookmarks": int,
+                "tags_per_bookmark_avg": float,
+                "top_tags": [{"name": str, "count": int}],
+                "orphaned_tags": [{"name": str}],
+                "orphaned_count": int,
+                "recent_tags": [{"name": str, "count": int}],
+                "source_breakdown": {"diigo": int, "user": int, ...},
+                "single_use_tags": int,
+            }
+        """
+        from sqlalchemy import func, select
+
+        from ..models import bookmark_tags, Bookmark
+
+        # Total tags
+        total_tags = self.session.query(func.count(Tag.id)).scalar() or 0
+
+        # Total bookmarks
+        total_bookmarks = self.session.query(func.count(Bookmark.id)).scalar() or 0
+
+        # Average tags per bookmark (from association table)
+        if total_bookmarks > 0:
+            total_associations = self.session.query(
+                func.count(bookmark_tags.c.bookmark_id)
+            ).scalar() or 0
+            tags_per_bookmark_avg = round(total_associations / total_bookmarks, 2)
+        else:
+            tags_per_bookmark_avg = 0.0
+
+        # Top 20 tags by bookmark count (using association table)
+        top_tags_query = (
+            self.session.query(
+                Tag.name,
+                func.count(bookmark_tags.c.bookmark_id).label("bookmark_count")
+            )
+            .join(bookmark_tags, Tag.id == bookmark_tags.c.tag_id)
+            .group_by(Tag.id)
+            .order_by(func.count(bookmark_tags.c.bookmark_id).desc())
+            .limit(20)
+            .all()
+        )
+        top_tags = [{"name": name, "count": count} for name, count in top_tags_query]
+
+        # Orphaned tags (tags with 0 bookmarks in association table)
+        tags_with_bookmarks = (
+            self.session.query(bookmark_tags.c.tag_id)
+            .distinct()
+            .subquery()
+        )
+        orphaned_query = (
+            self.session.query(Tag.name)
+            .filter(~Tag.id.in_(select(tags_with_bookmarks.c.tag_id)))
+            .order_by(Tag.name)
+            .all()
+        )
+        orphaned_tags = [{"name": name} for (name,) in orphaned_query]
+        orphaned_count = len(orphaned_tags)
+
+        # Recent tags (most recently created, with their bookmark count)
+        recent_tags_query = (
+            self.session.query(
+                Tag.name,
+                func.count(bookmark_tags.c.bookmark_id).label("bookmark_count")
+            )
+            .outerjoin(bookmark_tags, Tag.id == bookmark_tags.c.tag_id)
+            .group_by(Tag.id)
+            .order_by(Tag.created_at.desc())
+            .limit(20)
+            .all()
+        )
+        recent_tags = [{"name": name, "count": count} for name, count in recent_tags_query]
+
+        # Source breakdown
+        source_query = (
+            self.session.query(Tag.source, func.count(Tag.id))
+            .group_by(Tag.source)
+            .all()
+        )
+        source_breakdown = {source: count for source, count in source_query}
+
+        # Single-use tags (tags used by exactly 1 bookmark)
+        single_use_count = (
+            self.session.query(func.count())
+            .select_from(
+                self.session.query(bookmark_tags.c.tag_id)
+                .group_by(bookmark_tags.c.tag_id)
+                .having(func.count(bookmark_tags.c.bookmark_id) == 1)
+                .subquery()
+            )
+            .scalar()
+        ) or 0
+
+        return {
+            "total_tags": total_tags,
+            "total_bookmarks": total_bookmarks,
+            "tags_per_bookmark_avg": tags_per_bookmark_avg,
+            "top_tags": top_tags,
+            "orphaned_tags": orphaned_tags,
+            "orphaned_count": orphaned_count,
+            "recent_tags": recent_tags,
+            "source_breakdown": source_breakdown,
+            "single_use_tags": single_use_count,
+        }

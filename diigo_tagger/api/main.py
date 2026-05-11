@@ -300,12 +300,21 @@ async def help_search_syntax(request: Request):
 
 
 @app.get("/tags", response_class=HTMLResponse)
-async def tags_placeholder(request: Request):
-    """Placeholder for tags page (Phase 3)."""
-    return templates.TemplateResponse(
-        "tags_placeholder.html",
-        {"request": request, "active_nav": "tags"}
-    )
+async def tags_page(request: Request):
+    """Tag statistics and analytics dashboard."""
+    from .routes.bookmarks import TagModel
+    from ..services.tag_service import TagService
+
+    session = get_session()
+    try:
+        service = TagService(session=session)
+        stats = service.get_statistics()
+        return templates.TemplateResponse(
+            "tags.html",
+            {"request": request, "active_nav": "tags", "stats": stats}
+        )
+    finally:
+        session.close()
 
 
 @app.get("/add", response_class=HTMLResponse)
