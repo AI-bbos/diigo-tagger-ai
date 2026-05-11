@@ -492,7 +492,7 @@ async def merge_tags(request: MergeTagsRequest):
 @router.get("/tags/similar")
 async def similar_tags(
     threshold: float = Query(0.8, ge=0.5, le=1.0),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     min_count: int = Query(5, ge=0, le=1000, description="Minimum bookmark count per tag"),
 ):
     """Find similar tag pairs that are merge candidates.

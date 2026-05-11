@@ -72,15 +72,15 @@
         </div>
 
         <div id="suggestions-list" class="hidden">
-            <!-- Batch action bar (top) — always visible when suggestions loaded -->
+            <!-- Pair count + batch action bar -->
             <div id="batch-bar-top" class="mb-3 flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-md px-4 py-2">
-                <span class="text-sm text-indigo-800"><span id="selected-count-top">0</span> pairs selected</span>
+                <span class="text-sm text-indigo-800"><span id="total-pairs">0</span> pairs found — <span id="selected-count-top">0</span> selected</span>
                 <button type="button" onclick="batchMerge()" class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md">Merge Selected</button>
             </div>
 
-            <div class="overflow-x-auto">
+            <div class="overflow-auto" style="max-height: 70vh;">
                 <table class="min-w-full divide-y divide-gray-200">
-                    <thead>
+                    <thead class="sticky top-0 bg-white z-10 shadow-sm">
                         <tr>
                             <th class="px-4 py-2 text-left"><input type="checkbox" id="select-all-suggestions" class="h-4 w-4 text-indigo-600 border-gray-300 rounded"></th>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Keep (target)</th>
@@ -97,7 +97,7 @@
 
             <!-- Batch action bar (bottom, shown when > 10 items) -->
             <div id="batch-bar-bottom" class="hidden mt-3 flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-md px-4 py-2">
-                <span class="text-sm text-indigo-800"><span id="selected-count-bottom">0</span> pairs selected</span>
+                <span class="text-sm text-indigo-800"><span id="selected-count-bottom">0</span> selected</span>
                 <button type="button" onclick="batchMerge()" class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md">Merge Selected</button>
             </div>
         </div>
@@ -243,7 +243,7 @@
 
         const threshold = thresholdSlider.value / 100;
         try {
-            const resp = await fetch(`/api/v1/tags/similar?threshold=${threshold}&limit=20`);
+            const resp = await fetch(`/api/v1/tags/similar?threshold=${threshold}&limit=500`);
             const data = await resp.json();
             loading.classList.add('hidden');
 
@@ -288,6 +288,7 @@
                 // Show bottom bar if > 10 items
                 document.getElementById('batch-bar-bottom').classList.toggle('hidden', data.pairs.length <= 10);
                 // Auto-select all checkboxes for convenience
+                document.getElementById('total-pairs').textContent = data.pairs.length;
                 document.querySelectorAll('.suggestion-cb:not(:disabled)').forEach(cb => cb.checked = true);
                 document.getElementById('select-all-suggestions').checked = true;
                 updateBatchBars();
