@@ -1,0 +1,275 @@
+{# ABOUTME: Tag merge page with manual merge form and similarity suggestions #}
+{# ABOUTME: Uses HTMX-style fetch calls against /api/v1/tags/merge and /api/v1/tags/similar #}
+{% extends "base.html" %}
+
+{% block title %}Tag Merge - Diigo Tagger{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-0">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Tag Merge</h1>
+        <a href="/tags" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">&larr; Back to Tags</a>
+    </div>
+
+    <!-- Section 1: Manual Merge -->
+    <div class="bg-white rounded-lg shadow p-6 border border-gray-200 mb-8">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Manual Merge</h2>
+        <p class="text-sm text-gray-500 mb-4">Merge one or more source tags into a single target tag. All bookmarks with source tags will be reassigned to the target.</p>
+
+        <form id="merge-form" class="space-y-4">
+            <div>
+                <label for="source-tags" class="block text-sm font-medium text-gray-700 mb-1">Source Tags (comma-separated)</label>
+                <input type="text" id="source-tags" name="source_tags"
+                       placeholder="e.g. python3, py3, python-3"
+                       class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2">
+            </div>
+            <div class="relative">
+                <label for="target-tag" class="block text-sm font-medium text-gray-700 mb-1">Target Tag</label>
+                <input type="text" id="target-tag" name="target_tag"
+                       placeholder="e.g. python"
+                       autocomplete="off"
+                       class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2">
+                <ul id="autocomplete-list" class="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto hidden"></ul>
+            </div>
+
+            <div id="preview-area" class="hidden bg-blue-50 border border-blue-200 rounded-md p-4">
+                <p class="text-sm text-blue-800" id="preview-text"></p>
+            </div>
+
+            <div class="flex gap-3">
+                <button type="button" id="preview-btn"
+                        class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Preview
+                </button>
+                <button type="button" id="merge-btn"
+                        class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Merge Tags
+                </button>
+            </div>
+        </form>
+
+        <div id="merge-result" class="mt-4 hidden"></div>
+    </div>
+
+    <!-- Section 2: Suggested Merges -->
+    <div class="bg-white rounded-lg shadow p-6 border border-gray-200">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-gray-900">Suggested Merges</h2>
+            <div class="flex items-center gap-3">
+                <label for="threshold-slider" class="text-sm text-gray-600">Similarity:</label>
+                <input type="range" id="threshold-slider" min="50" max="100" value="80" step="5"
+                       class="w-32 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                <span id="threshold-value" class="text-sm font-medium text-gray-700 w-10">0.80</span>
+                <button type="button" id="refresh-suggestions-btn"
+                        class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md shadow-sm text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Refresh
+                </button>
+            </div>
+        </div>
+
+        <div id="suggestions-loading" class="text-center py-8 text-gray-500 text-sm">
+            Loading suggestions...
+        </div>
+
+        <div id="suggestions-list" class="hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead>
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tag 1</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tag 2</th>
+                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Similarity</th>
+                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Counts</th>
+                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="suggestions-tbody" class="divide-y divide-gray-100">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="suggestions-empty" class="hidden text-center py-8 text-gray-500 text-sm">
+            No similar tag pairs found at this threshold.
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function() {
+    const sourceInput = document.getElementById('source-tags');
+    const targetInput = document.getElementById('target-tag');
+    const autocompleteList = document.getElementById('autocomplete-list');
+    const previewBtn = document.getElementById('preview-btn');
+    const mergeBtn = document.getElementById('merge-btn');
+    const previewArea = document.getElementById('preview-area');
+    const previewText = document.getElementById('preview-text');
+    const mergeResult = document.getElementById('merge-result');
+    const thresholdSlider = document.getElementById('threshold-slider');
+    const thresholdValue = document.getElementById('threshold-value');
+    const refreshBtn = document.getElementById('refresh-suggestions-btn');
+
+    // Autocomplete for target tag
+    let autocompleteTimeout = null;
+    targetInput.addEventListener('input', function() {
+        clearTimeout(autocompleteTimeout);
+        const val = this.value.trim();
+        if (val.length < 1) {
+            autocompleteList.classList.add('hidden');
+            return;
+        }
+        autocompleteTimeout = setTimeout(async () => {
+            try {
+                const resp = await fetch(`/api/v1/tags/autocomplete?q=${encodeURIComponent(val)}&limit=10`);
+                const data = await resp.json();
+                if (data.tags && data.tags.length > 0) {
+                    autocompleteList.innerHTML = data.tags.map(tag =>
+                        `<li class="px-3 py-2 text-sm text-gray-700 hover:bg-indigo-50 cursor-pointer" data-tag="${tag}">${tag} <span class="text-gray-400 text-xs">(${data.tag_counts[tag] || 0})</span></li>`
+                    ).join('');
+                    autocompleteList.classList.remove('hidden');
+                } else {
+                    autocompleteList.classList.add('hidden');
+                }
+            } catch (e) {
+                autocompleteList.classList.add('hidden');
+            }
+        }, 200);
+    });
+
+    autocompleteList.addEventListener('click', function(e) {
+        const li = e.target.closest('li');
+        if (li) {
+            targetInput.value = li.dataset.tag;
+            autocompleteList.classList.add('hidden');
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!targetInput.contains(e.target) && !autocompleteList.contains(e.target)) {
+            autocompleteList.classList.add('hidden');
+        }
+    });
+
+    // Preview
+    previewBtn.addEventListener('click', async function() {
+        const sourceTags = sourceInput.value.split(',').map(s => s.trim()).filter(Boolean);
+        const targetTag = targetInput.value.trim();
+        if (sourceTags.length === 0 || !targetTag) {
+            showGlobalStatus('warning', 'Missing Input', 'Please enter both source tags and a target tag.');
+            return;
+        }
+        try {
+            const resp = await fetch(`/api/v1/tags/merge`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({source_tags: sourceTags, target_tag: targetTag, preview: true})
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                previewText.textContent = `Will merge ${data.merged_count} source tag(s) into "${data.target_tag}". Affected bookmarks: ${data.affected_bookmarks}.`;
+                previewArea.classList.remove('hidden');
+            } else {
+                showGlobalStatus('error', 'Preview Failed', data.detail || 'Unknown error');
+            }
+        } catch (e) {
+            showGlobalStatus('error', 'Network Error', 'Could not reach the server.');
+        }
+    });
+
+    // Merge
+    mergeBtn.addEventListener('click', async function() {
+        const sourceTags = sourceInput.value.split(',').map(s => s.trim()).filter(Boolean);
+        const targetTag = targetInput.value.trim();
+        if (sourceTags.length === 0 || !targetTag) {
+            showGlobalStatus('warning', 'Missing Input', 'Please enter both source tags and a target tag.');
+            return;
+        }
+        if (!confirm(`Merge [${sourceTags.join(', ')}] into "${targetTag}"? This cannot be undone.`)) return;
+
+        try {
+            const resp = await fetch(`/api/v1/tags/merge`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({source_tags: sourceTags, target_tag: targetTag})
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                mergeResult.innerHTML = `<div class="bg-green-50 border border-green-200 rounded-md p-4"><p class="text-sm text-green-800">Merged ${data.merged_count} tag(s) into "${data.target_tag}". ${data.affected_bookmarks} bookmark(s) affected.</p></div>`;
+                mergeResult.classList.remove('hidden');
+                previewArea.classList.add('hidden');
+                sourceInput.value = '';
+                targetInput.value = '';
+                loadSuggestions();
+            } else {
+                showGlobalStatus('error', 'Merge Failed', data.detail || 'Unknown error');
+            }
+        } catch (e) {
+            showGlobalStatus('error', 'Network Error', 'Could not reach the server.');
+        }
+    });
+
+    // Threshold slider
+    thresholdSlider.addEventListener('input', function() {
+        thresholdValue.textContent = (this.value / 100).toFixed(2);
+    });
+
+    refreshBtn.addEventListener('click', loadSuggestions);
+
+    // Load suggestions
+    async function loadSuggestions() {
+        const loading = document.getElementById('suggestions-loading');
+        const list = document.getElementById('suggestions-list');
+        const empty = document.getElementById('suggestions-empty');
+        const tbody = document.getElementById('suggestions-tbody');
+
+        loading.classList.remove('hidden');
+        list.classList.add('hidden');
+        empty.classList.add('hidden');
+
+        const threshold = thresholdSlider.value / 100;
+        try {
+            const resp = await fetch(`/api/v1/tags/similar?threshold=${threshold}&limit=20`);
+            const data = await resp.json();
+            loading.classList.add('hidden');
+
+            if (data.pairs && data.pairs.length > 0) {
+                tbody.innerHTML = data.pairs.map(pair => {
+                    const target = pair.count1 >= pair.count2 ? pair.tag1 : pair.tag2;
+                    const source = pair.count1 >= pair.count2 ? pair.tag2 : pair.tag1;
+                    return `<tr>
+                        <td class="px-4 py-3 text-sm text-gray-900">${pair.tag1}</td>
+                        <td class="px-4 py-3 text-sm text-gray-900">${pair.tag2}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600 text-right">${(pair.similarity * 100).toFixed(0)}%</td>
+                        <td class="px-4 py-3 text-sm text-gray-600 text-right">${pair.count1} / ${pair.count2}</td>
+                        <td class="px-4 py-3 text-right">
+                            <button type="button" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                                    onclick="fillMerge('${source}', '${target}')">Merge</button>
+                        </td>
+                    </tr>`;
+                }).join('');
+                list.classList.remove('hidden');
+            } else {
+                empty.classList.remove('hidden');
+            }
+        } catch (e) {
+            loading.classList.add('hidden');
+            empty.textContent = 'Failed to load suggestions.';
+            empty.classList.remove('hidden');
+        }
+    }
+
+    window.fillMerge = function(source, target) {
+        sourceInput.value = source;
+        targetInput.value = target;
+        previewArea.classList.add('hidden');
+        mergeResult.classList.add('hidden');
+        window.scrollTo({top: 0, behavior: 'smooth'});
+    };
+
+    // Load suggestions on page load
+    loadSuggestions();
+})();
+</script>
+{% endblock %}

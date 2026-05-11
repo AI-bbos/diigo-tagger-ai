@@ -317,6 +317,15 @@ async def tags_page(request: Request):
         session.close()
 
 
+@app.get("/tags/merge", response_class=HTMLResponse)
+async def tag_merge_page(request: Request):
+    """Tag merge management page with manual merge and similarity suggestions."""
+    return templates.TemplateResponse(
+        "tag_merge.html",
+        {"request": request, "active_nav": "tags"}
+    )
+
+
 @app.get("/add", response_class=HTMLResponse)
 async def add_bookmark_page(request: Request):
     """Add bookmark page."""
