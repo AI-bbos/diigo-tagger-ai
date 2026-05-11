@@ -321,12 +321,17 @@
         fillMerge(selected.dataset.other, selected.value);
     };
 
-    // When radio selected on an equal-count row, enable its checkbox
+    // When radio changes: enable checkbox for equal-count rows, uncheck on skip
     window.onRadioChange = function(idx, wasEqual) {
-        if (wasEqual) {
-            const cb = document.querySelector(`.suggestion-cb[data-idx="${idx}"]`);
-            if (cb) cb.disabled = false;
+        const cb = document.querySelector(`.suggestion-cb[data-idx="${idx}"]`);
+        const selected = document.querySelector(`input[name="target-${idx}"]:checked`);
+        if (wasEqual && cb) cb.disabled = false;
+        if (selected && selected.value === 'skip' && cb) {
+            cb.checked = false;
+        } else if (selected && selected.value !== 'skip' && cb && !cb.disabled) {
+            cb.checked = true;
         }
+        updateBatchBars();
     };
 
     // Skip all — select skip radio on every row
