@@ -326,6 +326,15 @@ async def tag_merge_page(request: Request):
     )
 
 
+@app.get("/tags/bulk", response_class=HTMLResponse)
+async def tags_bulk_page(request: Request):
+    """Bulk tag operations page."""
+    return templates.TemplateResponse(
+        "tag_bulk.html",
+        {"request": request, "active_nav": "tags"}
+    )
+
+
 @app.get("/add", response_class=HTMLResponse)
 async def add_bookmark_page(request: Request):
     """Add bookmark page."""

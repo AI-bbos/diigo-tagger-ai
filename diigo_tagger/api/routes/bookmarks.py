@@ -4,13 +4,13 @@
 import difflib
 import logging
 import os
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 from fastapi import APIRouter, Query, HTTPException
 from pydantic import BaseModel
 
 from ...db import get_session
-from ...models import Bookmark as BookmarkModel, Tag as TagModel
+from ...models import Bookmark as BookmarkModel, Tag as TagModel, bookmark_tags
 from ...services.bookmark_service import BookmarkService
 from ...clients.diigo_client import DiigoClient
 from ...clients.openai_client import OpenAIClient
@@ -712,6 +712,249 @@ async def resolve_bookmark_conflict(request: ResolveConflictRequest):
             display_id=result["display_id"],
             llm_suggestions=llm_suggestions,
             action=result.get("action")
+        )
+
+    finally:
+        session.close()
+
+
+class BulkTagRequest(BaseModel):
+    """Request body for bulk tag operations."""
+
+    operation: str
+    tags: List[str]
+    new_name: Optional[str] = None
+
+
+class BulkTagResponse(BaseModel):
+    """Response body for bulk tag operations."""
+
+    operation: str
+    affected_tags: int
+    affected_bookmarks: int
+
+
+@router.post("/tags/bulk", response_model=BulkTagResponse)
+async def bulk_tag_operations(request: BulkTagRequest):
+    """Execute bulk operations on tags.
+
+    Supported operations:
+    - rename: Rename tags[0] to new_name
+    - delete: Delete all listed tags and remove from bookmarks
+    - lowercase: Convert all listed tags to lowercase
+    - merge: Merge all listed tags into the one with highest bookmark count
+
+    Args:
+        request: BulkTagRequest with operation, tags list, and optional new_name.
+
+    Returns:
+        BulkTagResponse with operation name and affected counts.
+
+    Raises:
+        HTTPException: 400 for invalid operation or missing parameters,
+                       404 if no matching tags found.
+    """
+    from sqlalchemy import func as sa_func
+    from sqlalchemy import delete as sa_delete
+
+    valid_ops = {"rename", "delete", "lowercase", "merge"}
+    if request.operation not in valid_ops:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "detail": f"Invalid operation '{request.operation}'. Must be one of: {', '.join(sorted(valid_ops))}",
+                "error_code": "INVALID_OPERATION",
+            },
+        )
+
+    if not request.tags:
+        raise HTTPException(
+            status_code=400,
+            detail={"detail": "No tags provided", "error_code": "NO_TAGS"},
+        )
+
+    if request.operation == "rename" and not request.new_name:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "detail": "new_name is required for rename operation",
+                "error_code": "MISSING_NEW_NAME",
+            },
+        )
+
+    session = get_session()
+    try:
+        affected_tags = 0
+        affected_bookmark_ids: set[int] = set()
+
+        if request.operation == "delete":
+            for tag_name in request.tags:
+                tag = session.query(TagModel).filter_by(name=tag_name).first()
+                if not tag:
+                    continue
+                bm_ids = [
+                    row[0]
+                    for row in session.query(bookmark_tags.c.bookmark_id)
+                    .filter(bookmark_tags.c.tag_id == tag.id)
+                    .all()
+                ]
+                affected_bookmark_ids.update(bm_ids)
+                session.execute(
+                    sa_delete(bookmark_tags).where(bookmark_tags.c.tag_id == tag.id)
+                )
+                session.delete(tag)
+                affected_tags += 1
+            session.commit()
+
+        elif request.operation == "rename":
+            tag_name = request.tags[0]
+            tag = session.query(TagModel).filter_by(name=tag_name).first()
+            if not tag:
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "detail": f"Tag '{tag_name}' not found",
+                        "error_code": "TAG_NOT_FOUND",
+                    },
+                )
+            existing = session.query(TagModel).filter_by(name=request.new_name).first()
+            if existing and existing.id != tag.id:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "detail": f"Tag '{request.new_name}' already exists",
+                        "error_code": "TAG_EXISTS",
+                    },
+                )
+            bm_ids = [
+                row[0]
+                for row in session.query(bookmark_tags.c.bookmark_id)
+                .filter(bookmark_tags.c.tag_id == tag.id)
+                .all()
+            ]
+            affected_bookmark_ids.update(bm_ids)
+            tag.name = request.new_name
+            affected_tags = 1
+            session.commit()
+
+        elif request.operation == "lowercase":
+            for tag_name in request.tags:
+                tag = session.query(TagModel).filter_by(name=tag_name).first()
+                if not tag:
+                    continue
+                lower_name = tag_name.lower()
+                if lower_name == tag_name:
+                    continue  # Already lowercase
+                existing = session.query(TagModel).filter_by(name=lower_name).first()
+                if existing and existing.id != tag.id:
+                    # Merge into existing lowercase tag
+                    bm_ids_src = [
+                        row[0]
+                        for row in session.query(bookmark_tags.c.bookmark_id)
+                        .filter(bookmark_tags.c.tag_id == tag.id)
+                        .all()
+                    ]
+                    bm_ids_dst = set(
+                        row[0]
+                        for row in session.query(bookmark_tags.c.bookmark_id)
+                        .filter(bookmark_tags.c.tag_id == existing.id)
+                        .all()
+                    )
+                    for bm_id in bm_ids_src:
+                        if bm_id not in bm_ids_dst:
+                            session.execute(
+                                bookmark_tags.insert().values(
+                                    bookmark_id=bm_id, tag_id=existing.id
+                                )
+                            )
+                        affected_bookmark_ids.add(bm_id)
+                    session.execute(
+                        sa_delete(bookmark_tags).where(bookmark_tags.c.tag_id == tag.id)
+                    )
+                    session.delete(tag)
+                else:
+                    bm_ids = [
+                        row[0]
+                        for row in session.query(bookmark_tags.c.bookmark_id)
+                        .filter(bookmark_tags.c.tag_id == tag.id)
+                        .all()
+                    ]
+                    affected_bookmark_ids.update(bm_ids)
+                    tag.name = lower_name
+                affected_tags += 1
+            session.commit()
+
+        elif request.operation == "merge":
+            if len(request.tags) < 2:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "detail": "Merge requires at least 2 tags",
+                        "error_code": "INSUFFICIENT_TAGS",
+                    },
+                )
+            tag_objects = []
+            for tag_name in request.tags:
+                tag = session.query(TagModel).filter_by(name=tag_name).first()
+                if tag:
+                    count = (
+                        session.query(sa_func.count())
+                        .select_from(bookmark_tags)
+                        .filter(bookmark_tags.c.tag_id == tag.id)
+                        .scalar()
+                    )
+                    tag_objects.append((tag, count))
+            if len(tag_objects) < 2:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "detail": "Need at least 2 existing tags to merge",
+                        "error_code": "INSUFFICIENT_EXISTING_TAGS",
+                    },
+                )
+            # Sort by count desc -- first is the target
+            tag_objects.sort(key=lambda x: x[1], reverse=True)
+            target_tag = tag_objects[0][0]
+            target_bm_ids = set(
+                row[0]
+                for row in session.query(bookmark_tags.c.bookmark_id)
+                .filter(bookmark_tags.c.tag_id == target_tag.id)
+                .all()
+            )
+
+            for source_tag, _ in tag_objects[1:]:
+                src_bm_ids = [
+                    row[0]
+                    for row in session.query(bookmark_tags.c.bookmark_id)
+                    .filter(bookmark_tags.c.tag_id == source_tag.id)
+                    .all()
+                ]
+                for bm_id in src_bm_ids:
+                    if bm_id not in target_bm_ids:
+                        session.execute(
+                            bookmark_tags.insert().values(
+                                bookmark_id=bm_id, tag_id=target_tag.id
+                            )
+                        )
+                        target_bm_ids.add(bm_id)
+                    affected_bookmark_ids.add(bm_id)
+                session.execute(
+                    sa_delete(bookmark_tags).where(
+                        bookmark_tags.c.tag_id == source_tag.id
+                    )
+                )
+                session.delete(source_tag)
+                affected_tags += 1
+
+            # Count the target tag too
+            affected_tags += 1
+            affected_bookmark_ids.update(target_bm_ids)
+            session.commit()
+
+        return BulkTagResponse(
+            operation=request.operation,
+            affected_tags=affected_tags,
+            affected_bookmarks=len(affected_bookmark_ids),
         )
 
     finally:
