@@ -1,0 +1,64 @@
+{# ABOUTME: Tag cloud partial template for visual tag frequency display #}
+{# ABOUTME: Tags sized proportionally to bookmark count, clickable to search #}
+
+<div id="tag-cloud" class="p-6">
+    <h3 class="text-lg font-medium text-gray-900 mb-4">Tag Cloud</h3>
+    <div id="tag-cloud-container" class="flex flex-wrap gap-2 justify-center min-h-[100px]">
+        <span class="text-gray-400">Loading tags...</span>
+    </div>
+</div>
+
+<script>
+async function loadTagCloud() {
+    const container = document.getElementById('tag-cloud-container');
+    try {
+        const resp = await fetch('/api/v1/tags/cloud?limit=150');
+        if (!resp.ok) {
+            container.innerHTML = '<span class="text-red-500">Failed to load tag cloud</span>';
+            return;
+        }
+        const data = await resp.json();
+        const tags = data.tags;
+
+        if (!tags || tags.length === 0) {
+            container.innerHTML = '<span class="text-gray-400">No tags found</span>';
+            return;
+        }
+
+        // Calculate font sizes using logarithmic scale
+        const maxCount = Math.max(...tags.map(t => t.count));
+        const minCount = Math.min(...tags.map(t => t.count));
+        const minSize = 0.75;  // rem
+        const maxSize = 2.5;   // rem
+
+        container.innerHTML = '';
+
+        tags.forEach(tag => {
+            const link = document.createElement('a');
+
+            // Logarithmic scale for font size
+            let ratio = 0;
+            if (maxCount > minCount) {
+                ratio = (Math.log(tag.count) - Math.log(minCount)) /
+                        (Math.log(maxCount) - Math.log(minCount));
+            }
+            const fontSize = minSize + ratio * (maxSize - minSize);
+
+            // Opacity varies with count (0.4 to 1.0)
+            const opacity = 0.4 + ratio * 0.6;
+
+            link.href = '/?q=tags:' + encodeURIComponent(tag.name);
+            link.textContent = tag.name;
+            link.title = tag.name + ' (' + tag.count + ' bookmarks)';
+            link.style.fontSize = fontSize.toFixed(2) + 'rem';
+            link.style.opacity = opacity.toFixed(2);
+            link.className = 'text-indigo-700 hover:text-indigo-900 hover:underline transition-colors';
+
+            container.appendChild(link);
+        });
+    } catch (err) {
+        container.innerHTML = '<span class="text-red-500">Error loading tag cloud</span>';
+    }
+}
+loadTagCloud();
+</script>

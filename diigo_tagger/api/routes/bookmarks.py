@@ -406,6 +406,47 @@ async def tag_autocomplete(
         session.close()
 
 
+@router.get("/tags/cloud")
+async def tag_cloud(
+    limit: int = Query(100, ge=10, le=500, description="Max tags to return"),
+):
+    """Return tags with bookmark counts for cloud visualization.
+
+    Queries the bookmark_tags association table for accurate counts rather
+    than relying on the potentially stale Tag.count column.
+
+    Args:
+        limit: Maximum number of tags to return (10-500, default 100).
+
+    Returns:
+        Dict with ``tags`` list, each containing ``name`` and ``count``,
+        sorted by count descending.
+    """
+    from sqlalchemy import func, desc
+    from ...models import bookmark_tags
+
+    session = get_session()
+
+    try:
+        results = (
+            session.query(
+                TagModel.name,
+                func.count(bookmark_tags.c.bookmark_id).label("bookmark_count"),
+            )
+            .join(bookmark_tags, TagModel.id == bookmark_tags.c.tag_id)
+            .group_by(TagModel.id)
+            .order_by(desc("bookmark_count"))
+            .limit(limit)
+            .all()
+        )
+
+        tags = [{"name": row[0], "count": row[1]} for row in results]
+        return {"tags": tags}
+
+    finally:
+        session.close()
+
+
 @router.post("/bookmarks/resolve", response_model=AddBookmarkSuccessResponse)
 async def resolve_bookmark_conflict(request: ResolveConflictRequest):
     """
