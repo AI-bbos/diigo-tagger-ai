@@ -85,7 +85,7 @@
                             <th class="px-4 py-2 text-left"><input type="checkbox" id="select-all-suggestions" class="h-4 w-4 text-indigo-600 border-gray-300 rounded"></th>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Keep (target)</th>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Merge into target</th>
-                            <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Skip</th>
+                            <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"><label class="inline-flex items-center gap-1 cursor-pointer">Skip <input type="checkbox" id="skip-all" class="h-4 w-4 text-gray-400 border-gray-300 rounded"></label></th>
                             <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Similarity</th>
                             <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
                         </tr>
@@ -323,6 +323,21 @@
             if (cb) cb.disabled = false;
         }
     };
+
+    // Skip all — select skip radio on every row
+    document.getElementById('skip-all').addEventListener('change', function() {
+        const skipRadios = document.querySelectorAll('input.target-radio[value="skip"]');
+        if (this.checked) {
+            skipRadios.forEach(r => r.checked = true);
+        } else {
+            // Uncheck skip radios and restore pre-selected targets
+            skipRadios.forEach(r => r.checked = false);
+            // Re-check the pre-selected (first non-skip radio with border)
+            document.querySelectorAll('input.target-radio:not([value="skip"])').forEach(r => {
+                if (r.parentElement.classList.contains('border-2')) r.checked = true;
+            });
+        }
+    });
 
     // Select all checkbox (only selects enabled checkboxes)
     document.getElementById('select-all-suggestions').addEventListener('change', function() {
