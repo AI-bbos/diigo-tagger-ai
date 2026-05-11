@@ -73,9 +73,15 @@
 
         <div id="suggestions-list" class="hidden">
             <!-- Pair count + batch action bar -->
-            <div id="batch-bar-top" class="mb-3 flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-md px-4 py-2">
+            <div id="batch-bar-top" class="mb-3 flex flex-wrap items-center justify-between gap-2 bg-indigo-50 border border-indigo-200 rounded-md px-4 py-2">
                 <span class="text-sm text-indigo-800"><span id="total-pairs">0</span> pairs found — <span id="selected-count-top">0</span> selected</span>
-                <button type="button" onclick="batchMerge()" class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md">Merge Selected</button>
+                <div class="flex items-center gap-3">
+                    <label class="inline-flex items-center gap-1.5 text-sm text-indigo-700 cursor-pointer">
+                        <input type="checkbox" id="hide-plurals" class="h-4 w-4 text-indigo-600 border-gray-300 rounded" onchange="togglePluralFilter()">
+                        Hide singular/plural pairs
+                    </label>
+                    <button type="button" onclick="batchMerge()" class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md">Merge Selected</button>
+                </div>
             </div>
 
             <div class="overflow-auto" style="max-height: 70vh;">
@@ -279,7 +285,7 @@
                     const cbDisabled = equal ? 'disabled' : '';
                     const tag1Border = preselect1 ? 'border-2 border-indigo-400 rounded px-1' : '';
                     const tag2Border = preselect2 ? 'border-2 border-indigo-400 rounded px-1' : '';
-                    return `<tr>
+                    return `<tr data-tag1="${pair.tag1}" data-tag2="${pair.tag2}">
                         <td class="px-4 py-3"><input type="checkbox" class="suggestion-cb h-4 w-4 text-indigo-600 border-gray-300 rounded" data-idx="${idx}" ${cbDisabled} onchange="updateBatchBars()"></td>
                         <td class="px-4 py-3 text-sm text-gray-900">
                             <label class="inline-flex items-center gap-1 cursor-pointer ${tag1Border}">
@@ -505,6 +511,38 @@
         mergeResult.innerHTML = `<div class="bg-green-50 border border-green-200 rounded-md p-4"><p class="text-sm text-green-800">Batch merge complete: ${succeeded} succeeded, ${failed} failed.</p></div>`;
         mergeResult.classList.remove('hidden');
         loadSuggestions();
+    };
+
+    // Detect if two tags are singular/plural variants of each other
+    function isPluralPair(tag1, tag2) {
+        const a = tag1.toLowerCase();
+        const b = tag2.toLowerCase();
+        // One is the other + 's', 'es', or 'ies'/'y' swap
+        if (a + 's' === b || b + 's' === a) return true;
+        if (a + 'es' === b || b + 'es' === a) return true;
+        // y → ies (e.g., "category" / "categories")
+        if (a.endsWith('y') && b === a.slice(0, -1) + 'ies') return true;
+        if (b.endsWith('y') && a === b.slice(0, -1) + 'ies') return true;
+        return false;
+    }
+
+    window.togglePluralFilter = function() {
+        const hide = document.getElementById('hide-plurals').checked;
+        let hiddenCount = 0;
+        document.querySelectorAll('#suggestions-tbody tr').forEach(row => {
+            const tag1 = row.dataset.tag1;
+            const tag2 = row.dataset.tag2;
+            if (hide && isPluralPair(tag1, tag2)) {
+                row.style.display = 'none';
+                hiddenCount++;
+            } else {
+                row.style.display = '';
+            }
+        });
+        // Update visible count
+        const total = document.querySelectorAll('#suggestions-tbody tr').length;
+        document.getElementById('total-pairs').textContent = `${total - hiddenCount} of ${total}`;
+        updateBatchBars();
     };
 
     // Auto-select rows as they scroll into view
