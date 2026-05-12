@@ -858,3 +858,47 @@ async def set_tag_parent(request: SetParentRequest):
 
     finally:
         session.close()
+
+
+class SetClusterParentRequest(BaseModel):
+    """Request to set parent for a cluster of child tags."""
+    parent_tag: str
+    child_tags: list
+
+
+@router.post("/tags/hierarchy/cluster")
+async def set_cluster_parent(request: SetClusterParentRequest):
+    """Set parent_id on multiple child tags at once.
+
+    Used when user accepts a suggested category from LCA inference.
+    Creates the parent tag if it doesn't exist.
+
+    Args:
+        request: Contains parent_tag name and list of child_tag names.
+
+    Returns:
+        Dict with parent tag and count of children updated.
+    """
+    session = get_session()
+
+    try:
+        # Get or create the parent tag
+        parent = session.query(TagModel).filter_by(name=request.parent_tag).first()
+        if not parent:
+            parent = TagModel(name=request.parent_tag, count=0, source="user")
+            session.add(parent)
+            session.flush()
+
+        # Set parent_id on each child (skip if child == parent or doesn't exist)
+        updated = 0
+        for child_name in request.child_tags:
+            child = session.query(TagModel).filter_by(name=child_name).first()
+            if child and child.id != parent.id:
+                child.parent_id = parent.id
+                updated += 1
+
+        session.commit()
+        return {"parent_tag": parent.name, "children_updated": updated}
+
+    finally:
+        session.close()
