@@ -599,6 +599,13 @@ async def tag_cloud(
         session.close()
 
 
+class SetParentRequest(BaseModel):
+    """Request body for setting a tag's parent."""
+
+    tag_name: str
+    parent_name: Optional[str] = None
+
+
 @router.post("/bookmarks/resolve", response_model=AddBookmarkSuccessResponse)
 async def resolve_bookmark_conflict(request: ResolveConflictRequest):
     """
@@ -713,6 +720,185 @@ async def resolve_bookmark_conflict(request: ResolveConflictRequest):
             llm_suggestions=llm_suggestions,
             action=result.get("action")
         )
+
+    finally:
+        session.close()
+
+
+@router.get("/tags/hierarchy")
+async def get_tag_hierarchy():
+    """Return tag tree with parent-child relationships and bookmark counts.
+
+    Returns top-level tags (parent_id is null) with nested children.
+    Each node includes the tag's bookmark count from the association table.
+
+    Returns:
+        Dict with ``tags`` list of tree nodes, each containing ``id``,
+        ``name``, ``parent_id``, ``count``, and ``children``.
+    """
+    from sqlalchemy import func
+    from ...models import bookmark_tags
+
+    session = get_session()
+
+    try:
+        # Get all tags with their bookmark counts
+        results = (
+            session.query(
+                TagModel.id,
+                TagModel.name,
+                TagModel.parent_id,
+                func.count(bookmark_tags.c.bookmark_id).label("bookmark_count"),
+            )
+            .outerjoin(bookmark_tags, TagModel.id == bookmark_tags.c.tag_id)
+            .group_by(TagModel.id)
+            .order_by(TagModel.name)
+            .all()
+        )
+
+        # Build lookup of id -> node
+        nodes = {}
+        for row in results:
+            nodes[row[0]] = {
+                "id": row[0],
+                "name": row[1],
+                "parent_id": row[2],
+                "count": row[3],
+                "children": [],
+            }
+
+        # Assemble tree: attach children to parents
+        root_tags = []
+        for node in nodes.values():
+            pid = node["parent_id"]
+            if pid is not None and pid in nodes:
+                nodes[pid]["children"].append(node)
+            else:
+                root_tags.append(node)
+
+        # Sort root tags by count descending
+        root_tags.sort(key=lambda t: t["count"], reverse=True)
+
+        return {"tags": root_tags}
+
+    finally:
+        session.close()
+
+
+@router.post("/tags/hierarchy")
+async def set_tag_parent(request: SetParentRequest):
+    """Set or remove the parent of a tag.
+
+    Args:
+        request: Contains ``tag_name`` and optional ``parent_name``.
+            Set ``parent_name`` to null to make the tag top-level.
+
+    Returns:
+        Dict confirming the tag name and its new parent_id.
+
+    Raises:
+        HTTPException: 404 if tag or parent not found, 400 if circular.
+    """
+    session = get_session()
+
+    try:
+        tag = session.query(TagModel).filter_by(name=request.tag_name).first()
+        if not tag:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "detail": f"Tag '{request.tag_name}' not found",
+                    "error_code": "TAG_NOT_FOUND",
+                },
+            )
+
+        if request.parent_name is None:
+            tag.parent_id = None
+            session.commit()
+            return {"tag": tag.name, "parent_id": None}
+
+        parent = session.query(TagModel).filter_by(name=request.parent_name).first()
+        if not parent:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "detail": f"Parent tag '{request.parent_name}' not found",
+                    "error_code": "PARENT_TAG_NOT_FOUND",
+                },
+            )
+
+        # Prevent self-reference
+        if parent.id == tag.id:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "detail": "A tag cannot be its own parent",
+                    "error_code": "CIRCULAR_HIERARCHY",
+                },
+            )
+
+        # Prevent circular references: walk up from parent to root
+        current = parent
+        while current.parent_id is not None:
+            if current.parent_id == tag.id:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "detail": "Setting this parent would create a circular hierarchy",
+                        "error_code": "CIRCULAR_HIERARCHY",
+                    },
+                )
+            current = session.query(TagModel).get(current.parent_id)
+            if current is None:
+                break
+
+        tag.parent_id = parent.id
+        session.commit()
+        return {"tag": tag.name, "parent_id": parent.id}
+
+    finally:
+        session.close()
+
+
+class SetClusterParentRequest(BaseModel):
+    """Request to set parent for a cluster of child tags."""
+    parent_tag: str
+    child_tags: list
+
+
+@router.post("/tags/hierarchy/cluster")
+async def set_cluster_parent(request: SetClusterParentRequest):
+    """Set parent_id on multiple child tags at once.
+
+    Used when user accepts a suggested category from LCA inference.
+    Creates the parent tag if it doesn't exist.
+
+    Args:
+        request: Contains parent_tag name and list of child_tag names.
+
+    Returns:
+        Dict with parent tag and count of children updated.
+    """
+    session = get_session()
+
+    try:
+        # Get or create the parent tag
+        parent = session.query(TagModel).filter_by(name=request.parent_tag).first()
+        if not parent:
+            parent = TagModel(name=request.parent_tag, count=0, source="user")
+            session.add(parent)
+            session.flush()
+
+        # Set parent_id on each child (skip if child == parent or doesn't exist)
+        updated = 0
+        for child_name in request.child_tags:
+            child = session.query(TagModel).filter_by(name=child_name).first()
+            if child and child.id != parent.id:
+                child.parent_id = parent.id
+                updated += 1
+
+        session.commit()
+        return {"parent_tag": parent.name, "children_updated": updated}
 
     finally:
         session.close()

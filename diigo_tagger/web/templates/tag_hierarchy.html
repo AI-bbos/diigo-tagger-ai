@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+
+{% block title %}Tag Hierarchy - Diigo Tagger{% endblock %}
+
+{% block extra_head %}
+<style>
+    .tree-node { transition: background-color 0.15s; }
+    .tree-node:hover { background-color: #f5f3ff; }
+    .tree-children { border-left: 2px solid #e0e7ff; margin-left: 0.75rem; padding-left: 0.75rem; }
+    .count-badge { font-size: 0.7rem; color: #9ca3af; }
+    .edit-parent-input { width: 150px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-0">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Tag Hierarchy</h1>
+            <p class="text-sm text-gray-500 mt-1">Relationships built automatically when you accept suggested categories during bookmark tagging.</p>
+        </div>
+        <a href="/tags" class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+            Back to Tags
+        </a>
+    </div>
+
+    <div id="status-message" class="hidden mb-4"></div>
+
+    <!-- Loading -->
+    <div id="loading" class="text-center py-8">
+        <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+        <p class="mt-2 text-sm text-gray-500">Loading hierarchy...</p>
+    </div>
+
+    <div id="hierarchy-container" class="hidden">
+        <!-- Summary -->
+        <div class="flex gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow p-4 border border-gray-200 flex-1">
+                <div class="text-2xl font-semibold text-indigo-600" id="tree-count">0</div>
+                <div class="text-sm text-gray-500">Parent categories</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4 border border-gray-200 flex-1">
+                <div class="text-2xl font-semibold text-indigo-600" id="children-count">0</div>
+                <div class="text-sm text-gray-500">Categorized tags</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4 border border-gray-200 flex-1">
+                <div class="text-2xl font-semibold text-gray-400" id="uncategorized-count">0</div>
+                <div class="text-sm text-gray-500">Uncategorized</div>
+            </div>
+        </div>
+
+        <!-- Search/filter -->
+        <div class="mb-4">
+            <input type="text" id="tree-search" placeholder="Filter tags..."
+                   class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2">
+        </div>
+
+        <!-- Tree -->
+        <div class="bg-white rounded-lg shadow border border-gray-200 mb-8">
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-gray-900">Category Tree</h2>
+                <div class="flex gap-2">
+                    <button onclick="expandAll()" class="text-xs text-indigo-600 hover:text-indigo-800">Expand All</button>
+                    <span class="text-gray-300">|</span>
+                    <button onclick="collapseAll()" class="text-xs text-indigo-600 hover:text-indigo-800">Collapse All</button>
+                </div>
+            </div>
+            <div id="tag-tree" class="p-4 overflow-auto" style="max-height: 60vh;">
+            </div>
+        </div>
+
+        <!-- Uncategorized tags -->
+        <div class="bg-white rounded-lg shadow border border-gray-200">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-semibold text-gray-500">Uncategorized Tags</h2>
+                <p class="text-sm text-gray-400 mt-1">These will be categorized automatically as you add bookmarks and accept suggested categories.</p>
+            </div>
+            <div id="unassigned-tags" class="p-4 max-h-48 overflow-y-auto">
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let hierarchyData = [];
+
+async function loadHierarchy() {
+    try {
+        const response = await fetch('/api/v1/tags/hierarchy');
+        const data = await response.json();
+        hierarchyData = data.tags;
+        renderAll();
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('hierarchy-container').classList.remove('hidden');
+    } catch (err) {
+        document.getElementById('loading').innerHTML =
+            '<p class="text-red-600">Failed to load: ' + err.message + '</p>';
+    }
+}
+
+function renderAll() {
+    const withChildren = hierarchyData.filter(t => t.children && t.children.length > 0);
+    const withoutChildren = hierarchyData.filter(t => !t.children || t.children.length === 0);
+
+    // Count all categorized children
+    let childCount = 0;
+    function countChildren(node) {
+        if (node.children) {
+            childCount += node.children.length;
+            node.children.forEach(countChildren);
+        }
+    }
+    withChildren.forEach(countChildren);
+
+    document.getElementById('tree-count').textContent = withChildren.length;
+    document.getElementById('children-count').textContent = childCount;
+    document.getElementById('uncategorized-count').textContent = withoutChildren.length;
+
+    renderTree(withChildren);
+    renderUnassigned(withoutChildren);
+}
+
+function renderTree(parents) {
+    const treeEl = document.getElementById('tag-tree');
+    if (parents.length === 0) {
+        treeEl.innerHTML = '<p class="text-gray-400 text-sm py-4 text-center">No hierarchy yet. Add bookmarks and accept suggested categories to build the tree automatically.</p>';
+        return;
+    }
+    treeEl.innerHTML = parents.map(t => renderNode(t, true)).join('');
+}
+
+function renderNode(tag, isRoot) {
+    const hasChildren = tag.children && tag.children.length > 0;
+    const nodeId = 'node-' + tag.id;
+    const bookmarkLink = '/?q=tags:' + encodeURIComponent(tag.name);
+
+    let html = '<div class="tree-node rounded px-2 py-1">';
+    html += '<div class="flex items-center gap-1">';
+
+    // Expand/collapse
+    if (hasChildren) {
+        html += `<button onclick="toggleNode('${nodeId}')" class="text-gray-400 hover:text-gray-600 flex-shrink-0">
+            <svg id="icon-${nodeId}" class="h-4 w-4 transform transition-transform" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+            </svg>
+        </button>`;
+    } else {
+        html += '<span class="w-4 flex-shrink-0"></span>';
+    }
+
+    // Tag name — clickable to search bookmarks
+    const weight = isRoot ? 'font-semibold text-indigo-700' : 'font-medium text-gray-800';
+    html += `<a href="${bookmarkLink}" class="text-sm ${weight} hover:underline">${esc(tag.name)}</a>`;
+    html += `<span class="count-badge">(${tag.count})</span>`;
+
+    // Inline edit: reassign parent
+    if (!isRoot) {
+        html += `<button onclick="showReassign('${esc(tag.name)}')" class="ml-auto opacity-0 group-hover:opacity-100 text-xs text-gray-400 hover:text-indigo-600" title="Change parent">✎</button>`;
+        html += `<button onclick="removeParent('${esc(tag.name)}')" class="text-xs text-gray-400 hover:text-red-500 ml-1" title="Remove from hierarchy">✕</button>`;
+    }
+
+    html += '</div>';
+
+    // Children
+    if (hasChildren) {
+        html += `<div id="${nodeId}" class="tree-children mt-1">`;
+        html += tag.children.map(c => {
+            let childHtml = '<div class="group">' + renderNode(c, false) + '</div>';
+            return childHtml;
+        }).join('');
+        html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+}
+
+function renderUnassigned(tags) {
+    const el = document.getElementById('unassigned-tags');
+    if (tags.length === 0) {
+        el.innerHTML = '<p class="text-green-600 text-sm text-center py-2">All tags are categorized!</p>';
+        return;
+    }
+    // Show top ones by count, clickable to search
+    const sorted = [...tags].sort((a, b) => b.count - a.count);
+    el.innerHTML = '<div class="flex flex-wrap gap-1.5">' +
+        sorted.slice(0, 200).map(t =>
+            `<a href="/?q=tags:${encodeURIComponent(t.name)}" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 hover:bg-indigo-100 hover:text-indigo-700">
+                ${esc(t.name)} <span class="ml-1 text-gray-400">(${t.count})</span>
+            </a>`
+        ).join('') +
+        (sorted.length > 200 ? `<span class="text-xs text-gray-400 self-center">+${sorted.length - 200} more</span>` : '') +
+    '</div>';
+}
+
+function toggleNode(id) {
+    const el = document.getElementById(id);
+    const icon = document.getElementById('icon-' + id);
+    if (el) el.classList.toggle('hidden');
+    if (icon) icon.classList.toggle('-rotate-90');
+}
+
+function expandAll() {
+    document.querySelectorAll('.tree-children').forEach(el => el.classList.remove('hidden'));
+    document.querySelectorAll('[id^="icon-node-"]').forEach(el => el.classList.remove('-rotate-90'));
+}
+
+function collapseAll() {
+    document.querySelectorAll('.tree-children').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('[id^="icon-node-"]').forEach(el => el.classList.add('-rotate-90'));
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;'); }
+
+// Inline reassign parent
+function showReassign(tagName) {
+    const newParent = prompt(`Move "${tagName}" under which parent tag? (leave empty to remove)`);
+    if (newParent === null) return; // cancelled
+    setParent(tagName, newParent || null);
+}
+
+async function removeParent(tagName) {
+    if (!confirm(`Remove "${tagName}" from the hierarchy?`)) return;
+    await setParent(tagName, null);
+}
+
+async function setParent(tagName, parentName) {
+    try {
+        const resp = await fetch('/api/v1/tags/hierarchy', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({tag_name: tagName, parent_name: parentName})
+        });
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.detail?.detail || 'Failed');
+        }
+        showStatus('success', parentName
+            ? `Moved "${tagName}" under "${parentName}"`
+            : `Removed "${tagName}" from hierarchy`);
+        loadHierarchy();
+    } catch (err) {
+        showStatus('error', err.message);
+    }
+}
+
+function showStatus(type, message) {
+    const el = document.getElementById('status-message');
+    const colors = { success: 'bg-green-50 border-green-200 text-green-800', error: 'bg-red-50 border-red-200 text-red-800' };
+    el.className = 'mb-4 p-4 rounded-lg border ' + (colors[type] || colors.error);
+    el.textContent = message;
+    el.classList.remove('hidden');
+    if (type === 'success') setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+// Filter
+document.getElementById('tree-search').addEventListener('input', function() {
+    const query = this.value.toLowerCase();
+    document.querySelectorAll('.tree-node').forEach(node => {
+        const text = node.textContent.toLowerCase();
+        node.style.display = !query || text.includes(query) ? '' : 'none';
+    });
+});
+
+loadHierarchy();
+</script>
+{% endblock %}

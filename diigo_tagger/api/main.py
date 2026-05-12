@@ -326,6 +326,15 @@ async def tag_merge_page(request: Request):
     )
 
 
+@app.get("/tags/hierarchy", response_class=HTMLResponse)
+async def tag_hierarchy_page(request: Request):
+    """Tag hierarchy management page for viewing and editing parent-child relationships."""
+    return templates.TemplateResponse(
+        "tag_hierarchy.html",
+        {"request": request, "active_nav": "tags"}
+    )
+
+
 @app.get("/add", response_class=HTMLResponse)
 async def add_bookmark_page(request: Request):
     """Add bookmark page."""

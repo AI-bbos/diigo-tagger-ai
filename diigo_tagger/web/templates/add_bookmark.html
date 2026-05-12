@@ -597,6 +597,16 @@ function addParentCategory(tagName) {
     if (userTags.has(tagName) || llmTags.has(tagName) || detectedTags.has(tagName)) return;
     userTags.add(tagName);
     renderAll();
+
+    // Persist hierarchy: set parent_id on cluster children
+    const cat = parentCategoryData.find(c => c.tag === tagName || c.original_suggestion === tagName);
+    if (cat && cat.cluster && cat.cluster.length > 0) {
+        fetch('/api/v1/tags/hierarchy/cluster', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({parent_tag: tagName, child_tags: cat.cluster})
+        }).catch(() => {}); // fire and forget — hierarchy is best-effort
+    }
 }
 
 // === Add/Remove actions ===

@@ -38,8 +38,12 @@ class Tag(Base):
     source = Column(String, nullable=False, default="user")
     embedding = Column(LargeBinary, nullable=True)
     embedding_version = Column(Integer, default=1)
+    parent_id = Column(Integer, ForeignKey('tags.id'), nullable=True)
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    parent = relationship("Tag", remote_side=[id], backref="children")
 
     # Constraints
     __table_args__ = (
